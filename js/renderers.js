@@ -336,16 +336,18 @@ function renderGantt() {
   html += `<div class="gantt-timeline" id="ganttTimeline" style="flex:1;overflow-x:auto;overflow-y:hidden;position:relative;">`;
   html += `<div style="width:${timelineW}px;min-width:${timelineW}px;">`;
 
-  // Month header
+  // Month header — clamp to visible date range
   html += `<div style="height:24px;position:relative;border-bottom:1px solid var(--border);background:var(--bg-input);">`;
   months.forEach(m => {
-    const mLeft = Math.max(0, diffDays(projStart, m)) * pxDay;
-    const mEnd = new Date(m.getFullYear(), m.getMonth() + 1, 0);
-    const rawW = Math.min(diffDays(m, mEnd) + 1, diffDays(m, projEnd)) * pxDay;
-    const mWidth = Math.max(20, rawW);
+    const mStart = new Date(Math.max(m.getTime(), projStart.getTime()));
+    const mEndDate = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+    const mEnd = new Date(Math.min(mEndDate.getTime(), projEnd.getTime()));
+    if (mEnd < mStart) return; // month not in visible range
+    const mLeft = diffDays(projStart, mStart) * pxDay;
+    const mWidth = Math.max(2, diffDays(mStart, mEnd) * pxDay);
     const mLabel = mWidth > 140 ? m.toLocaleDateString('en-US',{month:'long',year:'numeric'})
-      : mWidth > 70 ? m.toLocaleDateString('en-US',{month:'short',year:'numeric'})
-      : mWidth > 35 ? m.toLocaleDateString('en-US',{month:'short'})
+      : mWidth > 80 ? m.toLocaleDateString('en-US',{month:'short',year:'numeric'})
+      : mWidth > 40 ? m.toLocaleDateString('en-US',{month:'short'})
       : '';
     html += `<div style="position:absolute;left:${mLeft}px;width:${mWidth}px;height:24px;display:flex;align-items:center;padding:0 6px;font-size:11px;font-weight:700;color:var(--text-primary);border-right:1px solid var(--border);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${mLabel}</div>`;
   });
