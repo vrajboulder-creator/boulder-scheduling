@@ -1,9 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY
-);
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('MISSING ENV: SUPABASE_URL or SUPABASE_SERVICE_KEY/SUPABASE_ANON_KEY not set');
+}
+
+const supabase = SUPABASE_URL ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 const headers = {
   'Content-Type': 'application/json',
@@ -27,14 +31,24 @@ export async function handler(event) {
   }
 
   const method = event.httpMethod;
-  const path = event.path.replace('/.netlify/functions/api', '').replace('/api', '') || '/';
-  const segments = path.split('/').filter(Boolean);
+  // Handle path from both redirect formats
+  let rawPath = event.path || '';
+  rawPath = rawPath.replace('/.netlify/functions/api', '').replace('/api', '');
+  if (!rawPath || rawPath === '/') rawPath = '/';
+  const pathClean = rawPath.startsWith('/') ? rawPath : '/' + rawPath;
+  const segments = pathClean.split('/').filter(Boolean);
   const body = event.body ? JSON.parse(event.body) : null;
 
+  console.log(`[API] ${method} ${pathClean} segments=${JSON.stringify(segments)}`);
+
   try {
+    if (!supabase) {
+      return err('Database not configured — set SUPABASE_URL and SUPABASE_SERVICE_KEY in Netlify environment variables', 503);
+    }
+
     // ─── HEALTH ───
-    if (path === '/health') {
-      return json({ status: 'ok', timestamp: new Date().toISOString() });
+    if (pathClean === '/health' || segments.length === 0) {
+      return json({ status: 'ok', timestamp: new Date().toISOString(), db: !!supabase });
     }
 
     // ─── PROJECTS ───
