@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boulder Construction — Schedule Command Center</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-app: #f4f5f7;
+  --bg-sidebar: #1a1d23;
+  --bg-sidebar-hover: #2a2d35;
+  --bg-sidebar-active: #33363f;
+  --bg-card: #ffffff;
+  --bg-detail: #ffffff;
+  --bg-input: #f7f8fa;
+  --bg-badge: #eef0f4;
+  --bg-header: #ffffff;
+  --border: #e2e5ea;
+  --border-light: #eef0f4;
+  --text-primary: #1a1d23;
+  --text-secondary: #5f6577;
+  --text-tertiary: #8e93a4;
+  --text-sidebar: #a0a5b5;
+  --text-sidebar-active: #ffffff;
+  --accent: #2563eb;
+  --accent-light: #eff4ff;
+  --accent-hover: #1d4fd8;
+  --red: #dc2626;
+  --red-bg: #fef2f2;
+  --red-light: #fee2e2;
+  --orange: #ea580c;
+  --orange-bg: #fff7ed;
+  --orange-light: #fed7aa;
+  --yellow: #ca8a04;
+  --yellow-bg: #fefce8;
+  --yellow-light: #fef08a;
+  --green: #16a34a;
+  --green-bg: #f0fdf4;
+  --green-light: #bbf7d0;
+  --blue: #2563eb;
+  --blue-bg: #eff6ff;
+  --purple: #7c3aed;
+  --purple-bg: #f5f3ff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md: 0 2px 8px rgba(0,0,0,.08);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,.12);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,.15);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --header-h: 52px;
+  --sidebar-w: 232px;
+  --detail-w: 400px;
+}
+
+html { font-size: 14px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* === LAYOUT === */
+.app { display: flex; height: 100vh; }
+
+/* SIDEBAR */
+.sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  transition: transform .25s ease;
+}
+.sidebar-brand {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.sidebar-brand h1 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -.2px;
+}
+.sidebar-brand span {
+  font-size: 11px;
+  color: var(--text-sidebar);
+  font-weight: 400;
+}
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 8px 0; }
+.nav-group { margin-bottom: 4px; }
+.nav-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: rgba(255,255,255,.25);
+  padding: 12px 18px 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 18px;
+  color: var(--text-sidebar);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 400;
+  transition: all .12s;
+  border-left: 2px solid transparent;
+}
+.nav-item:hover { background: var(--bg-sidebar-hover); color: #d0d3dd; }
+.nav-item.active {
+  background: var(--bg-sidebar-active);
+  color: var(--text-sidebar-active);
+  font-weight: 500;
+  border-left-color: var(--accent);
+}
+.nav-item .icon { width: 16px; text-align: center; font-size: 13px; opacity: .7; }
+.nav-item.active .icon { opacity: 1; }
+.nav-item .badge {
+  margin-left: auto;
+  background: rgba(255,255,255,.1);
+  color: rgba(255,255,255,.6);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.nav-item .badge.alert { background: var(--red); color: #fff; }
+.nav-item .badge.warn { background: var(--orange); color: #fff; }
+
+/* MAIN AREA */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* HEADER */
+.header {
+  height: var(--header-h);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.btn-menu {
+  display: none;
+  background: none; border: none;
+  font-size: 18px; cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px;
+}
+.header-project {
+  display: flex; align-items: center; gap: 8px;
+}
+.header-project select {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.header-search {
+  flex: 1; max-width: 360px;
+  position: relative;
+}
+.header-search input {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px 12px 6px 32px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color .15s;
+}
+.header-search input:focus { border-color: var(--accent); }
+.header-search::before {
+  content: '⌕';
+  position: absolute; left: 10px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+.header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.header-date { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.header-weather {
+  font-size: 11px; color: var(--orange);
+  background: var(--orange-bg);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+.btn-primary {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background .15s;
+  white-space: nowrap;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-secondary {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn-secondary:hover { background: var(--bg-input); border-color: #ccc; }
+.btn-icon {
+  background: none; border: none;
+  cursor: pointer; padding: 4px 6px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  border-radius: var(--radius-sm);
+}
+.btn-icon:hover { background: var(--bg-input); }
+
+/* CONTENT */
+.content { flex: 1; display: flex; overflow: hidden; }
+.schedule-area {
+  flex: 1; overflow-y: auto; overflow-x: hidden;
+  padding: 16px 20px 32px;
+}
+.schedule-area::-webkit-scrollbar { width: 6px; }
+.schedule-area::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+
+/* KPI CARDS */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.kpi-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.kpi-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.kpi-card.alert { border-left: 3px solid var(--red); }
+.kpi-card.warn { border-left: 3px solid var(--orange); }
+.kpi-card.info { border-left: 3px solid var(--accent); }
+.kpi-card.ok { border-left: 3px solid var(--green); }
+.kpi-label {
+  font-size: 11px; font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.kpi-value {
+  font-size: 24px; font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -.5px;
+  line-height: 1.1;
+}
+.kpi-sub { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+.kpi-card.alert .kpi-value { color: var(--red); }
+.kpi-card.warn .kpi-value { color: var(--orange); }
+
+/* FILTER BAR */
+.filter-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px; flex-wrap: wrap;
+}
+.filter-bar select, .filter-bar input[type="date"] {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 5px 8px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.view-tabs {
+  display: flex; gap: 2px;
+  background: var(--bg-badge);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+.view-tab {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all .12s;
+  white-space: nowrap;
+}
+.view-tab.active { background: var(--bg-card); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+
+/* SECTION HEADERS */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 10px;
+}
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.section-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: var(--bg-badge);
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+/* MILESTONE STRIP */
+.milestone-strip {
+  display: flex; gap: 10px; overflow-x: auto;
+  padding: 2px 0 12px;
+  margin-bottom: 8px;
+}
+.milestone-strip::-webkit-scrollbar { height: 3px; }
+.milestone-strip::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+.milestone-chip {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  min-width: 180px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.milestone-chip:hover { border-color: var(--accent); }
+.milestone-chip.overdue { border-left: 3px solid var(--red); }
+.milestone-chip.upcoming { border-left: 3px solid var(--yellow); }
+.milestone-chip.complete { border-left: 3px solid var(--green); }
+.milestone-chip .ms-name { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+.milestone-chip .ms-date { font-size: 11px; color: var(--text-tertiary); }
+.milestone-chip .ms-status { font-size: 10px; font-weight: 600; margin-top: 3px; }
+.milestone-chip.overdue .ms-status { color: var(--red); }
+.milestone-chip.upcoming .ms-status { color: var(--yellow); }
+.milestone-chip.complete .ms-status { color: var(--green); }
+
+/* SCHEDULE TABLE */
+.schedule-table-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.schedule-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 12.5px;
+}
+.schedule-table thead th {
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.schedule-table tbody tr {
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background .1s;
+}
+.schedule-table tbody tr:hover { background: var(--accent-light); }
+.schedule-table tbody tr.overdue { background: var(--red-bg); }
+.schedule-table tbody tr.overdue:hover { background: var(--red-light); }
+.schedule-table td {
+  padding: 8px 12px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.schedule-table .activity-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: normal;
+  min-width: 200px;
+  max-width: 280px;
+}
+.schedule-table .activity-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.schedule-table .trade-badge {
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-badge);
+  color: var(--text-secondary);
+}
+
+/* STATUS BADGES */
+.status {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px; border-radius: 4px;
+}
+.status.not-started { background: var(--bg-badge); color: var(--text-secondary); }
+.status.in-progress { background: var(--blue-bg); color: var(--blue); }
+.status.complete { background: var(--green-bg); color: var(--green); }
+.status.delayed { background: var(--red-bg); color: var(--red); }
+.status.blocked { background: var(--orange-bg); color: var(--orange); }
+.status.ready { background: var(--green-bg); color: var(--green); }
+
+/* PERCENT BAR */
+.pct-bar { display: flex; align-items: center; gap: 6px; }
+.pct-track {
+  width: 48px; height: 5px;
+  background: var(--bg-badge);
+  border-radius: 3px; overflow: hidden;
+}
+.pct-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width .3s; }
+.pct-fill.high { background: var(--green); }
+.pct-fill.mid { background: var(--yellow); }
+.pct-fill.low { background: var(--orange); }
+.pct-text { font-size: 11px; font-weight: 500; color: var(--text-secondary); min-width: 28px; }
+
+/* BLOCKER TAG */
+.blocker-tag {
+  font-size: 10px; font-weight: 600;
+  padding: 2px 6px; border-radius: 3px;
+  background: var(--red-bg); color: var(--red);
+}
+.blocker-tag.material { background: var(--orange-bg); color: var(--orange); }
+.blocker-tag.inspection { background: var(--purple-bg); color: var(--purple); }
+.blocker-tag.rfi { background: var(--yellow-bg); color: var(--yellow); }
+.blocker-tag.weather { background: #f0f9ff; color: #0369a1; }
+
+/* GANTT STRIP */
+.gantt-section { margin: 16px 0; }
+.gantt-header {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+.gantt-header-cell {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding: 4px 0;
+  border-right: 1px solid var(--border-light);
+}
+.gantt-header-cell.today-col { background: var(--accent-light); color: var(--accent); }
+.gantt-row {
+  display: flex; align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+}
+.gantt-row:hover { background: rgba(37,99,235,.03); }
+.gantt-label {
+  width: 200px; min-width: 200px;
+  font-size: 11.5px; font-weight: 500;
+  padding-right: 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gantt-track { flex: 1; position: relative; height: 20px; }
+.gantt-bar {
+  position: absolute; top: 3px; height: 14px;
+  border-radius: 3px;
+  font-size: 9px; font-weight: 600; color: #fff;
+  display: flex; align-items: center;
+  padding: 0 4px;
+  overflow: hidden; white-space: nowrap;
+  transition: all .2s;
+}
+.gantt-bar.status-ip { background: var(--accent); }
+.gantt-bar.status-ns { background: #94a3b8; }
+.gantt-bar.status-done { background: var(--green); }
+.gantt-bar.status-delayed { background: var(--red); }
+.gantt-bar.status-blocked { background: var(--orange); }
+.gantt-bar.milestone-bar { background: #7c3aed; border-radius: 8px; }
+
+/* LOOKAHEAD CARDS */
+.lookahead-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+}
+.lookahead-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.lookahead-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.lookahead-card.has-blocker { border-left: 3px solid var(--red); }
+.lookahead-card.ready-soon { border-left: 3px solid var(--green); }
+.la-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.la-name { font-size: 13px; font-weight: 600; }
+.la-id { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+.la-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.la-tag {
+  font-size: 10.5px; font-weight: 500;
+  padding: 1px 6px; border-radius: 3px;
+  background: var(--bg-badge); color: var(--text-secondary);
+}
+.la-dates { font-size: 11px; color: var(--text-tertiary); margin-bottom: 4px; }
+.la-blocker {
+  font-size: 11px; font-weight: 500;
+  color: var(--red);
+  margin-top: 4px;
+}
+.la-actions { display: flex; gap: 6px; margin-top: 8px; }
+.la-actions button {
+  font-family: var(--font-sans);
+  font-size: 11px; font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all .12s;
+}
+.la-actions button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.la-actions button.quick-complete { background: var(--green-bg); color: var(--green); border-color: var(--green-light); }
+.la-actions button.quick-complete:hover { background: var(--green); color: #fff; }
+
+/* DETAIL PANEL */
+.detail-panel {
+  width: var(--detail-w);
+  min-width: var(--detail-w);
+  background: var(--bg-detail);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width .25s ease, min-width .25s ease;
+}
+.detail-panel.closed { width: 0; min-width: 0; border-left: none; }
+.detail-inner { overflow-y: auto; padding: 0 0 32px; flex: 1; }
+.detail-inner::-webkit-scrollbar { width: 4px; }
+.detail-inner::-webkit-scrollbar-thumb { background: #ddd; border-radius: 2px; }
+.detail-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0;
+  background: var(--bg-detail);
+  z-index: 2;
+}
+.detail-header h3 { font-size: 13px; font-weight: 600; }
+.detail-section { padding: 14px 18px; border-bottom: 1px solid var(--border-light); }
+.detail-section-title {
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .6px;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+}
+.detail-field { margin-bottom: 8px; }
+.detail-label { font-size: 11px; color: var(--text-tertiary); margin-bottom: 2px; }
+.detail-value { font-size: 13px; font-weight: 500; }
+.detail-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.detail-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.detail-linked-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.detail-linked-item:hover { background: var(--accent-light); }
+.detail-linked-item .link-type {
+  font-size: 10px; font-weight: 600;
+  color: var(--accent);
+  min-width: 40px;
+}
+.detail-note {
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.detail-note .note-meta { font-size: 10px; color: var(--text-tertiary); margin-bottom: 2px; }
+.detail-note .note-text { font-size: 12px; }
+.detail-actions { padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 6px; }
+.detail-progress-update {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 18px;
+  background: var(--bg-input);
+  border-bottom: 1px solid var(--border-light);
+}
+.progress-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  outline: none;
+}
+.progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+.progress-val { font-size: 13px; font-weight: 600; min-width: 36px; text-align: right; }
+
+/* TRADE VIEW */
+.trade-group { margin-bottom: 16px; }
+.trade-group-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.trade-group-header h4 { font-size: 13px; font-weight: 600; }
+.trade-group-header .trade-count { font-size: 11px; color: var(--text-tertiary); }
+
+/* MODAL */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 1000;
+  display: none;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  width: 540px; max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-header h2 { font-size: 16px; font-weight: 700; }
+.modal-body { padding: 18px 22px; }
+.form-group { margin-bottom: 14px; }
+.form-label {
+  display: block;
+  font-size: 12px; font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.form-input, .form-select, .form-textarea {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color .15s;
+}
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--accent); }
+.form-textarea { resize: vertical; min-height: 60px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+}
+
+/* TOAST */
+.toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--bg-sidebar);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  z-index: 2000;
+  transform: translateY(80px);
+  opacity: 0;
+  transition: all .3s ease;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* SIDEBAR OVERLAY */
+.sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.3);
+  z-index: 99;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1024px) {
+  .detail-panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 200; box-shadow: var(--shadow-xl); }
+  .detail-panel.closed { width: 0; min-width: 0; }
+}
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0;
+    transform: translateX(-100%);
+    z-index: 200;
+    box-shadow: var(--shadow-xl);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay.open { display: block; }
+  .btn-menu { display: block; }
+  .header-search { max-width: 200px; }
+  .kpi-row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  .schedule-area { padding: 12px 12px 32px; }
+  .schedule-table { font-size: 12px; }
+  .schedule-table .col-hide-mobile { display: none; }
+  .gantt-label { width: 120px; min-width: 120px; font-size: 11px; }
+  .detail-panel { width: 100vw; min-width: 100vw; }
+  .lookahead-grid { grid-template-columns: 1fr; }
+  .filter-bar { gap: 4px; }
+  .view-tabs { overflow-x: auto; }
+}
+
+/* EMPTY STATE */
+.empty-state {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-tertiary);
+}
+.empty-state h3 { font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+.empty-state p { font-size: 13px; }
+
+/* AREA TURNOVER */
+.turnover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.turnover-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.turnover-card:hover { border-color: var(--accent); }
+.turnover-area { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.turnover-bar { height: 6px; background: var(--bg-badge); border-radius: 3px; overflow: hidden; margin: 6px 0 4px; }
+.turnover-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.turnover-pct { font-size: 11px; color: var(--text-tertiary); }
+.turnover-items { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
+
+/* WEATHER STRIP */
+.weather-alert {
+  display: flex; align-items: center; gap: 8px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  font-size: 12px; font-weight: 500;
+  color: #92400e;
+}
+
+/* PRIORITY DOT */
+.priority-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+.priority-dot.critical { background: var(--red); }
+.priority-dot.high { background: var(--orange); }
+.priority-dot.normal { background: var(--accent); }
+.priority-dot.low { background: var(--text-tertiary); }
+
+/* Quick update modal */
+.quick-update-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.quick-btn {
+  font-family: var(--font-sans);
+  font-size: 11px; font-weight: 500;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all .12s;
+}
+.quick-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.quick-btn.danger:hover { background: var(--red); border-color: var(--red); }
+
+/* Responsive table container */
+.table-scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <h1>Boulder Construction</h1>
+      <span>Schedule Command Center</span>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-group">
+        <div class="nav-group-label">Dashboard</div>
+        <div class="nav-item active" data-view="dashboard"><span class="icon">◉</span> Overview <span class="badge">3</span></div>
+        <div class="nav-item" data-view="today"><span class="icon">◎</span> Today <span class="badge alert">7</span></div>
+        <div class="nav-item" data-view="this-week"><span class="icon">▤</span> This Week</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Schedule Views</div>
+        <div class="nav-item" data-view="master"><span class="icon">▦</span> Master Schedule</div>
+        <div class="nav-item" data-view="gantt"><span class="icon">▬</span> Timeline</div>
+        <div class="nav-item" data-view="lookahead-6"><span class="icon">▸</span> 6-Week Lookahead</div>
+        <div class="nav-item" data-view="lookahead-3"><span class="icon">▹</span> 3-Week Lookahead</div>
+        <div class="nav-item" data-view="milestones"><span class="icon">◆</span> Milestones</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Coordination</div>
+        <div class="nav-item" data-view="by-trade"><span class="icon">⚒</span> By Trade</div>
+        <div class="nav-item" data-view="by-area"><span class="icon">▣</span> By Area / Floor</div>
+        <div class="nav-item" data-view="by-sub"><span class="icon">⊞</span> By Subcontractor</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Status</div>
+        <div class="nav-item" data-view="delayed"><span class="icon">⚠</span> Delayed <span class="badge alert">4</span></div>
+        <div class="nav-item" data-view="blocked"><span class="icon">✕</span> Blocked <span class="badge warn">6</span></div>
+        <div class="nav-item" data-view="in-progress"><span class="icon">▶</span> In Progress</div>
+        <div class="nav-item" data-view="ready"><span class="icon">✓</span> Ready to Start</div>
+        <div class="nav-item" data-view="completed"><span class="icon">✔</span> Completed</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label">Tracking</div>
+        <div class="nav-item" data-view="procurement"><span class="icon">⊡</span> Procurement / Long Lead</div>
+        <div class="nav-item" data-view="inspections"><span class="icon">✎</span> Inspections / Permits</div>
+        <div class="nav-item" data-view="punch"><span class="icon">⊘</span> Punch / Closeout</div>
+        <div class="nav-item" data-view="turnover"><span class="icon">⊕</span> Area Turnover</div>
+      </div>
+    </div>
+  </nav>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- HEADER -->
+    <header class="header">
+      <button class="btn-menu" id="btnMenu" title="Menu">☰</button>
+      <div class="header-project">
+        <select id="projectSelect">
+          <option>Hampton Inn – Beaumont, TX</option>
+          <option>Fairfield Inn – Midland, TX</option>
+          <option>Holiday Inn Express – Tyler, TX</option>
+        </select>
+      </div>
+      <div class="header-search">
+        <input type="text" placeholder="Search activities, trades, areas…" id="globalSearch">
+      </div>
+      <div class="header-right">
+        <span class="header-weather" title="Weather advisory">⛅ 94°F — Heat Advisory Thu-Fri</span>
+        <span class="header-date" id="headerDate"></span>
+        <button class="btn-primary" id="btnAddActivity">+ Activity</button>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="content">
+      <div class="schedule-area" id="scheduleArea">
+        <!-- Dynamic content injected here -->
+      </div>
+
+      <!-- DETAIL PANEL -->
+      <div class="detail-panel closed" id="detailPanel">
+        <div class="detail-header">
+          <h3 id="detailTitle">Activity Detail</h3>
+          <button class="btn-icon" id="btnCloseDetail" title="Close">✕</button>
+        </div>
+        <div class="detail-inner" id="detailInner">
+          <!-- filled dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Add Schedule Activity</h2>
+      <button class="btn-icon" id="btnCloseModal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Activity Name *</label>
+        <input class="form-input" id="fName" placeholder="e.g., MEP rough-in level 3">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Trade</label>
+          <select class="form-select" id="fTrade">
+            <option value="">— Select —</option>
+            <option>General / GC</option><option>Concrete</option><option>Framing</option><option>Drywall</option><option>Paint</option>
+            <option>HVAC</option><option>Plumbing</option><option>Electrical</option><option>Low Voltage</option>
+            <option>Fire Alarm</option><option>Flooring</option><option>Sitework</option><option>Roofing</option>
+            <option>Glazing</option><option>Doors/Frames/HW</option><option>Specialties</option><option>Casework</option>
+            <option>Elevator</option><option>Landscaping</option><option>Fire Sprinkler</option><option>Insulation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subcontractor</label>
+          <input class="form-input" id="fSub" placeholder="e.g., Apex Mechanical">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Area / Building</label>
+          <select class="form-select" id="fArea">
+            <option value="">— Select —</option>
+            <option>Tower A</option><option>Tower B</option><option>Lobby / Front Desk</option>
+            <option>Back of House</option><option>Amenity Area</option><option>Exterior / Site</option>
+            <option>Parking</option><option>Pool Deck</option><option>Breakfast Area</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Floor</label>
+          <select class="form-select" id="fFloor">
+            <option value="">— Select —</option>
+            <option>Level 1</option><option>Level 2</option><option>Level 3</option>
+            <option>Level 4</option><option>Level 5</option><option>Roof</option><option>Site</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Phase</label>
+          <select class="form-select" id="fPhase">
+            <option value="">— Select —</option>
+            <option>Sitework</option><option>Foundation</option><option>Structure</option>
+            <option>Rough-In</option><option>Close-In</option><option>Finishes</option>
+            <option>Punch / Closeout</option><option>Turnover</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <select class="form-select" id="fPriority">
+            <option>Normal</option><option>Critical</option><option>High</option><option>Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input class="form-input" type="date" id="fStart">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Finish Date</label>
+          <input class="form-input" type="date" id="fFinish">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="fStatus">
+            <option>Not Started</option><option>In Progress</option><option>Complete</option>
+            <option>Delayed</option><option>Blocked</option><option>Ready to Start</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">% Complete</label>
+          <input class="form-input" type="number" id="fPct" min="0" max="100" value="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Constraint / Blocker</label>
+        <select class="form-select" id="fBlocker">
+          <option value="">None</option>
+          <option>Predecessor not complete</option><option>Material not on site</option>
+          <option>RFI pending</option><option>Submittal pending</option>
+          <option>Inspection required</option><option>Permit required</option>
+          <option>Owner decision pending</option><option>Weather delay</option>
+          <option>Manpower shortage</option><option>Design clarification</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Milestone</label>
+          <select class="form-select" id="fMilestone"><option>No</option><option>Yes</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lookahead Flag</label>
+          <select class="form-select" id="fLookahead"><option>Yes</option><option>No</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="fNotes" placeholder="Field notes, coordination notes, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="btnCancelModal">Cancel</button>
+      <button class="btn-primary" id="btnSaveActivity">Save Activity</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── DATE HELPERS ───
+const TODAY = new Date(2026, 3, 2); // April 2, 2026 — matches context
+const DAY_MS = 86400000;
+const fmt = d => { const dd = new Date(d); return dd.toLocaleDateString('en-US', {month:'short', day:'numeric'}); };
+const fmtFull = d => { const dd = new Date(d); return dd.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}); };
+const addDays = (d, n) => new Date(new Date(d).getTime() + n * DAY_MS);
+const diffDays = (a, b) => Math.round((new Date(b) - new Date(a)) / DAY_MS);
+const isoDate = d => new Date(d).toISOString().slice(0,10);
+const isOverdue = a => a.status !== 'Complete' && new Date(a.finish) < TODAY;
+const isThisWeek = d => { const s = addDays(TODAY, -TODAY.getDay()); const e = addDays(s,6); return new Date(d) >= s && new Date(d) <= e; };
+const isInRange = (d, days) => { const dt = new Date(d); return dt >= TODAY && dt <= addDays(TODAY, days); };
+
+document.getElementById('headerDate').textContent = fmtFull(TODAY);
+
+// ─── SAMPLE DATA: Realistic Hotel Construction ───
+let nextId = 100;
+const genId = () => 'ACT-' + (nextId++);
+
+const TRADES = ['General / GC','Concrete','Framing','Drywall','Paint','HVAC','Plumbing','Electrical','Low Voltage','Fire Alarm','Flooring','Sitework','Roofing','Glazing','Doors/Frames/HW','Specialties','Casework','Elevator','Landscaping','Fire Sprinkler','Insulation'];
+
+const SUBS = {
+  'General / GC': 'Boulder Construction (Self-Perform)',
+  'Concrete': 'Gulf Coast Concrete',
+  'Framing': 'Lone Star Framing',
+  'Drywall': 'ProFinish Interiors',
+  'Paint': 'ProFinish Interiors',
+  'HVAC': 'Apex Mechanical',
+  'Plumbing': 'Apex Mechanical',
+  'Electrical': 'Spark Systems Electric',
+  'Low Voltage': 'Integrated AV Solutions',
+  'Fire Alarm': 'FireTech Systems',
+  'Flooring': 'Southwest Flooring Co',
+  'Sitework': 'Earthworks Civil',
+  'Roofing': 'Pinnacle Roofing',
+  'Glazing': 'Clear View Glass',
+  'Doors/Frames/HW': 'National Door Supply',
+  'Specialties': 'Hotel Outfitters Inc',
+  'Casework': 'Precision Millwork',
+  'Elevator': 'ThyssenKrupp Elevator',
+  'Landscaping': 'Green Edge Landscape',
+  'Fire Sprinkler': 'FireTech Systems',
+  'Insulation': 'ThermalPro Insulation'
+};
+
+// Base date for the project: started Jan 5 2026
+const PB = new Date(2026, 0, 5);
+const pd = n => addDays(PB, n);
+
+let activities = [
+  // SITEWORK & FOUNDATION
+  {id:'ACT-001',name:'Mobilization & Temporary Fencing',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Exterior / Site',floor:'Site',phase:'Sitework',start:pd(0),finish:pd(6),duration:7,status:'Complete',pct:100,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:[],successors:['ACT-002'],notes:'Completed on schedule. SWPPP installed.',linked:[{type:'Permit',ref:'SWPPP-001'}]},
+  {id:'ACT-002',name:'Erosion Control & Grading',trade:'Sitework',sub:'Earthworks Civil',area:'Exterior / Site',floor:'Site',phase:'Sitework',start:pd(5),finish:pd(18),duration:14,status:'Complete',pct:100,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-001'],successors:['ACT-003'],notes:'Finished. Pad ready.',linked:[]},
+  {id:'ACT-003',name:'Building Pad Prep & Compaction',trade:'Sitework',sub:'Earthworks Civil',area:'Exterior / Site',floor:'Site',phase:'Sitework',start:pd(16),finish:pd(24),duration:9,status:'Complete',pct:100,priority:'High',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-002'],successors:['ACT-004'],notes:'Compaction testing passed.',linked:[{type:'Inspection',ref:'Geotech compaction test'}]},
+  {id:'ACT-004',name:'Underground Plumbing Rough-In',trade:'Plumbing',sub:'Apex Mechanical',area:'Tower A',floor:'Level 1',phase:'Foundation',start:pd(22),finish:pd(38),duration:17,status:'Complete',pct:100,priority:'Critical',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-003'],successors:['ACT-005'],notes:'Inspection complete.',linked:[{type:'Inspection',ref:'Underground plumbing inspection'}]},
+  {id:'ACT-005',name:'Foundations — Tower A',trade:'Concrete',sub:'Gulf Coast Concrete',area:'Tower A',floor:'Level 1',phase:'Foundation',start:pd(35),finish:pd(52),duration:18,status:'Complete',pct:100,priority:'Critical',blocker:'',milestone:true,lookahead:false,predecessors:['ACT-004'],successors:['ACT-006'],notes:'Foundation complete. Milestone achieved.',linked:[{type:'Inspection',ref:'Foundation inspection'},{type:'RFI',ref:'RFI-012 — Footing depth revision'}]},
+  // STRUCTURE
+  {id:'ACT-006',name:'Structural Steel Erection — Level 1-3',trade:'Framing',sub:'Lone Star Framing',area:'Tower A',floor:'Level 1',phase:'Structure',start:pd(50),finish:pd(72),duration:23,status:'Complete',pct:100,priority:'Critical',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-005'],successors:['ACT-007','ACT-010'],notes:'Steel topped out L3.',linked:[{type:'Submittal',ref:'SUB-05 12 00-001 Structural steel shop dwgs'}]},
+  {id:'ACT-007',name:'Structural Steel Erection — Level 4-5 & Roof',trade:'Framing',sub:'Lone Star Framing',area:'Tower A',floor:'Level 4',phase:'Structure',start:pd(70),finish:pd(87),duration:18,status:'In Progress',pct:72,priority:'Critical',blocker:'',milestone:false,lookahead:true,predecessors:['ACT-006'],successors:['ACT-008','ACT-014'],notes:'Level 5 steel in progress. Roof deck ETA next week.',linked:[{type:'Procurement',ref:'Long Lead: Roof deck panels — on site'}]},
+  {id:'ACT-008',name:'Roof Structure Complete',trade:'Framing',sub:'Lone Star Framing',area:'Tower A',floor:'Roof',phase:'Structure',start:pd(85),finish:pd(92),duration:8,status:'Not Started',pct:0,priority:'Critical',blocker:'Predecessor not complete',milestone:true,lookahead:true,predecessors:['ACT-007'],successors:['ACT-009'],notes:'Milestone — triggers roofing mobilization.',linked:[]},
+  {id:'ACT-009',name:'Roofing — TPO Membrane Install',trade:'Roofing',sub:'Pinnacle Roofing',area:'Tower A',floor:'Roof',phase:'Close-In',start:pd(93),finish:pd(108),duration:16,status:'Not Started',pct:0,priority:'High',blocker:'Predecessor not complete',milestone:false,lookahead:true,predecessors:['ACT-008'],successors:[],notes:'Material staged in yard. Ready to mobilize once roof deck done.',linked:[{type:'Submittal',ref:'SUB-07 52 00-003 Roofing membrane'},{type:'Procurement',ref:'TPO membrane — on site'}]},
+  // ROUGH-IN
+  {id:'ACT-010',name:'Exterior Sheathing — Level 1-3',trade:'Framing',sub:'Lone Star Framing',area:'Tower A',floor:'Level 1',phase:'Close-In',start:pd(68),finish:pd(82),duration:15,status:'In Progress',pct:85,priority:'High',blocker:'',milestone:false,lookahead:true,predecessors:['ACT-006'],successors:['ACT-011'],notes:'Level 3 sheathing wrapping up.',linked:[]},
+  {id:'ACT-011',name:'Window Install — Tower A East',trade:'Glazing',sub:'Clear View Glass',area:'Tower A',floor:'Level 1',phase:'Close-In',start:pd(78),finish:pd(96),duration:19,status:'In Progress',pct:40,priority:'High',blocker:'',milestone:false,lookahead:true,predecessors:['ACT-010'],successors:[],notes:'Level 1 & 2 windows installed. Level 3 starting this week. Long lead storefront package on site.',linked:[{type:'Procurement',ref:'Storefront glazing package — on site'},{type:'Submittal',ref:'SUB-08 44 13-001 Storefront system'}]},
+  {id:'ACT-012',name:'MEP Rough-In — Level 2 Guestrooms',trade:'HVAC',sub:'Apex Mechanical',area:'Tower A',floor:'Level 2',phase:'Rough-In',start:pd(72),finish:pd(88),duration:17,status:'In Progress',pct:65,priority:'Critical',blocker:'',milestone:false,lookahead:true,predecessors:['ACT-006'],successors:['ACT-020'],notes:'HVAC & plumbing rough progressing. Electrical following 2 rooms behind.',linked:[{type:'RFI',ref:'RFI-087 — PTAC sleeve location clarification'}]},
+  {id:'ACT-013',name:'MEP Rough-In — Level 3 Guestrooms',trade:'HVAC',sub:'Apex Mechanical',area:'Tower A',floor:'Level 3',phase:'Rough-In',start:pd(80),finish:pd(98),duration:19,status:'In Progress',pct:30,priority:'Critical',blocker:'',milestone:false,lookahead:true,predecessors:['ACT-006'],successors:['ACT-021'],notes:'Started L3 wing A. Coordinating with electrical.',linked:[]},
+  {id:'ACT-014',name:'MEP Rough-In — Level 4 Guestrooms',trade:'HVAC',sub:'Apex Mechanical',area:'Tower A',floor:'Level 4',phase:'Rough-In',start:pd(90),finish:pd(108),duration:19,status:'Not Started',pct:0,priority:'Critical',blocker:'Predecessor not complete',milestone:false,lookahead:true,predecessors:['ACT-007'],successors:[],notes:'Waiting on L4-5 steel completion.',linked:[]},
+  {id:'ACT-015',name:'Electrical Rough-In — Level 2 Guestrooms',trade:'Electrical',sub:'Spark Systems Electric',area:'Tower A',floor:'Level 2',phase:'Rough-In',start:pd(74),finish:pd(89),duration:16,status:'In Progress',pct:55,priority:'High',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Following HVAC by 2 rooms.',linked:[]},
+  {id:'ACT-016',name:'Fire Sprinkler Rough-In — Level 2',trade:'Fire Sprinkler',sub:'FireTech Systems',area:'Tower A',floor:'Level 2',phase:'Rough-In',start:pd(75),finish:pd(88),duration:14,status:'In Progress',pct:50,priority:'High',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'On schedule.',linked:[]},
+  {id:'ACT-017',name:'Plumbing Rough-In — Level 3 Guestrooms',trade:'Plumbing',sub:'Apex Mechanical',area:'Tower A',floor:'Level 3',phase:'Rough-In',start:pd(82),finish:pd(97),duration:16,status:'In Progress',pct:20,priority:'High',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Risers in place. Horizontal runs starting.',linked:[]},
+  // INSPECTIONS & CLOSE-IN
+  {id:'ACT-018',name:'Level 2 Framing Inspection',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 2',phase:'Rough-In',start:pd(89),finish:pd(90),duration:2,status:'Not Started',pct:0,priority:'Critical',blocker:'Inspection required',milestone:true,lookahead:true,predecessors:['ACT-012','ACT-015','ACT-016'],successors:['ACT-019'],notes:'Must pass before insulation. Schedule with AHJ next week.',linked:[{type:'Inspection',ref:'Level 2 framing inspection — AHJ'}]},
+  {id:'ACT-019',name:'Insulation — Level 2 Guestrooms',trade:'Insulation',sub:'ThermalPro Insulation',area:'Tower A',floor:'Level 2',phase:'Close-In',start:pd(91),finish:pd(97),duration:7,status:'Not Started',pct:0,priority:'High',blocker:'Inspection required',milestone:false,lookahead:true,predecessors:['ACT-018'],successors:['ACT-020'],notes:'Waiting on framing inspection pass.',linked:[]},
+  // FINISHES
+  {id:'ACT-020',name:'Drywall Hang — Level 2 Guestrooms',trade:'Drywall',sub:'ProFinish Interiors',area:'Tower A',floor:'Level 2',phase:'Finishes',start:pd(98),finish:pd(112),duration:15,status:'Not Started',pct:0,priority:'High',blocker:'Predecessor not complete',milestone:false,lookahead:true,predecessors:['ACT-019'],successors:['ACT-022'],notes:'',linked:[]},
+  {id:'ACT-021',name:'Drywall Hang — Level 3 Guestrooms',trade:'Drywall',sub:'ProFinish Interiors',area:'Tower A',floor:'Level 3',phase:'Finishes',start:pd(105),finish:pd(120),duration:16,status:'Not Started',pct:0,priority:'High',blocker:'Predecessor not complete',milestone:false,lookahead:true,predecessors:['ACT-013'],successors:[],notes:'',linked:[]},
+  {id:'ACT-022',name:'Prime & Paint — Level 2 Guestrooms',trade:'Paint',sub:'ProFinish Interiors',area:'Tower A',floor:'Level 2',phase:'Finishes',start:pd(113),finish:pd(123),duration:11,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-020'],successors:['ACT-024'],notes:'Hilton brand spec: Cloud White SW 7620.',linked:[{type:'Submittal',ref:'SUB-09 91 00-002 Paint color schedule'}]},
+  {id:'ACT-023',name:'Flooring — Level 2 Guestrooms',trade:'Flooring',sub:'Southwest Flooring Co',area:'Tower A',floor:'Level 2',phase:'Finishes',start:pd(120),finish:pd(132),duration:13,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-022'],successors:['ACT-025'],notes:'LVP in guestrooms, carpet in corridors.',linked:[{type:'Procurement',ref:'Long Lead: Guestroom LVP — on order, ETA wk 16'}]},
+  {id:'ACT-024',name:'Casework & Vanities — Level 2',trade:'Casework',sub:'Precision Millwork',area:'Tower A',floor:'Level 2',phase:'Finishes',start:pd(124),finish:pd(134),duration:11,status:'Not Started',pct:0,priority:'Normal',blocker:'Material not on site',milestone:false,lookahead:false,predecessors:['ACT-022'],successors:[],notes:'Vanities on order. Delivery confirmed wk 17.',linked:[{type:'Procurement',ref:'Long Lead: Guestroom vanities — ETA wk 17'},{type:'Submittal',ref:'SUB-06 41 00-004 Vanity shop dwgs'}]},
+  {id:'ACT-025',name:'PTAC Unit Install — Level 2',trade:'HVAC',sub:'Apex Mechanical',area:'Tower A',floor:'Level 2',phase:'Finishes',start:pd(130),finish:pd(138),duration:9,status:'Not Started',pct:0,priority:'High',blocker:'Material not on site',milestone:false,lookahead:false,predecessors:['ACT-023'],successors:[],notes:'',linked:[{type:'Procurement',ref:'Long Lead: Guestroom PTAC units — ETA wk 18'},{type:'Submittal',ref:'SUB-23 82 00-001 PTAC units'}]},
+  // LOBBY & BOH
+  {id:'ACT-026',name:'Lobby Framing & MEP Rough-In',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Lobby / Front Desk',floor:'Level 1',phase:'Rough-In',start:pd(70),finish:pd(90),duration:21,status:'In Progress',pct:45,priority:'High',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Front desk area framing complete. Breakfast area rough starting.',linked:[{type:'RFI',ref:'RFI-143 — Lobby ceiling height clarification'}]},
+  {id:'ACT-027',name:'Back of House Buildout',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Back of House',floor:'Level 1',phase:'Rough-In',start:pd(72),finish:pd(95),duration:24,status:'In Progress',pct:35,priority:'Normal',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Laundry, housekeeping, engineering rooms.',linked:[]},
+  // ELEVATOR
+  {id:'ACT-028',name:'Elevator Shaft & Rail Install',trade:'Elevator',sub:'ThyssenKrupp Elevator',area:'Tower A',floor:'Level 1',phase:'Structure',start:pd(60),finish:pd(95),duration:36,status:'In Progress',pct:60,priority:'Critical',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:['ACT-029'],notes:'Rails installed through L3. Waiting on L4-5 steel for continued work.',linked:[{type:'Procurement',ref:'Elevator cab — 16 week lead, ordered'},{type:'Submittal',ref:'SUB-14 21 00-001 Elevator shop dwgs'}]},
+  {id:'ACT-029',name:'Elevator Inspection — State',trade:'Elevator',sub:'ThyssenKrupp Elevator',area:'Tower A',floor:'Level 1',phase:'Punch / Closeout',start:pd(155),finish:pd(157),duration:3,status:'Not Started',pct:0,priority:'Critical',blocker:'',milestone:true,lookahead:false,predecessors:['ACT-028'],successors:[],notes:'State elevator inspection required before CO.',linked:[{type:'Inspection',ref:'State elevator inspection'}]},
+  // FIRE ALARM
+  {id:'ACT-030',name:'Fire Alarm Trim-Out — All Floors',trade:'Fire Alarm',sub:'FireTech Systems',area:'Tower A',floor:'Level 1',phase:'Finishes',start:pd(130),finish:pd(148),duration:19,status:'Not Started',pct:0,priority:'High',blocker:'',milestone:false,lookahead:false,predecessors:[],successors:['ACT-031'],notes:'Starts after drywall complete on each floor.',linked:[]},
+  {id:'ACT-031',name:'Fire Alarm Acceptance Test',trade:'Fire Alarm',sub:'FireTech Systems',area:'Tower A',floor:'Level 1',phase:'Punch / Closeout',start:pd(150),finish:pd(152),duration:3,status:'Not Started',pct:0,priority:'Critical',blocker:'',milestone:true,lookahead:false,predecessors:['ACT-030'],successors:[],notes:'Required for CO.',linked:[{type:'Inspection',ref:'Fire alarm acceptance test — AHJ'}]},
+  // PUNCH & CLOSEOUT
+  {id:'ACT-032',name:'Punch Walkthrough — Level 2 Guestrooms',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 2',phase:'Punch / Closeout',start:pd(140),finish:pd(144),duration:5,status:'Not Started',pct:0,priority:'High',blocker:'',milestone:false,lookahead:false,predecessors:[],successors:['ACT-033'],notes:'Internal QC before owner walk.',linked:[]},
+  {id:'ACT-033',name:'Punch Corrections — Level 2 Wing A',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 2',phase:'Punch / Closeout',start:pd(145),finish:pd(152),duration:8,status:'Not Started',pct:0,priority:'High',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-032'],successors:[],notes:'',linked:[{type:'Punch',ref:'Punch list — L2 Wing A'}]},
+  {id:'ACT-034',name:'Final Clean — Level 2',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 2',phase:'Punch / Closeout',start:pd(153),finish:pd(155),duration:3,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-033'],successors:[],notes:'',linked:[]},
+  {id:'ACT-035',name:'Final Clean — Level 5',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 5',phase:'Punch / Closeout',start:pd(165),finish:pd(167),duration:3,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:[],successors:[],notes:'',linked:[]},
+  // MILESTONES
+  {id:'ACT-036',name:'AHJ Final Inspection',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 1',phase:'Turnover',start:pd(168),finish:pd(170),duration:3,status:'Not Started',pct:0,priority:'Critical',blocker:'',milestone:true,lookahead:false,predecessors:['ACT-029','ACT-031'],successors:['ACT-037'],notes:'All systems must pass before CO.',linked:[{type:'Inspection',ref:'AHJ final building inspection'}]},
+  {id:'ACT-037',name:'Certificate of Occupancy',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 1',phase:'Turnover',start:pd(171),finish:pd(171),duration:1,status:'Not Started',pct:0,priority:'Critical',blocker:'',milestone:true,lookahead:false,predecessors:['ACT-036'],successors:['ACT-038'],notes:'Target: July 24, 2026.',linked:[{type:'Permit',ref:'Certificate of Occupancy'}]},
+  {id:'ACT-038',name:'Owner Training & Turnover',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 1',phase:'Turnover',start:pd(172),finish:pd(176),duration:5,status:'Not Started',pct:0,priority:'Critical',blocker:'',milestone:true,lookahead:false,predecessors:['ACT-037'],successors:[],notes:'Hilton management team on-site training. O&M manuals delivered.',linked:[]},
+  // DELAYED / BLOCKED items
+  {id:'ACT-039',name:'Low Voltage Rough-In — Level 2',trade:'Low Voltage',sub:'Integrated AV Solutions',area:'Tower A',floor:'Level 2',phase:'Rough-In',start:pd(76),finish:pd(90),duration:15,status:'Delayed',pct:25,priority:'High',blocker:'Manpower shortage',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Sub short 2 techs. Promised additional crew Monday.',linked:[]},
+  {id:'ACT-040',name:'Exterior Signage & Pylon',trade:'Specialties',sub:'Hotel Outfitters Inc',area:'Exterior / Site',floor:'Site',phase:'Finishes',start:pd(80),finish:pd(92),duration:13,status:'Blocked',pct:0,priority:'Normal',blocker:'Submittal pending',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Hilton brand review taking longer than expected. Resubmitted 3/20.',linked:[{type:'Submittal',ref:'SUB-10 14 00-003 Exterior signage'},{type:'RFI',ref:'RFI-156 — Pylon sign height variance'}]},
+  {id:'ACT-041',name:'Pool Deck Concrete',trade:'Concrete',sub:'Gulf Coast Concrete',area:'Pool Deck',floor:'Site',phase:'Sitework',start:pd(82),finish:pd(92),duration:11,status:'Delayed',pct:10,priority:'High',blocker:'Weather delay',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'3 rain days last week. Rescheduled pour for 4/6.',linked:[]},
+  {id:'ACT-042',name:'Doors/Frames/Hardware — Level 2',trade:'Doors/Frames/HW',sub:'National Door Supply',area:'Tower A',floor:'Level 2',phase:'Finishes',start:pd(88),finish:pd(98),duration:11,status:'Blocked',pct:0,priority:'High',blocker:'Material not on site',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Guestroom door hardware on backorder. New ETA 4/14.',linked:[{type:'Procurement',ref:'Long Lead: Guestroom door hardware — backordered'},{type:'CO',ref:'CO-019 — Hardware spec revision'}]},
+  {id:'ACT-043',name:'Amenity Area Framing',trade:'Framing',sub:'Lone Star Framing',area:'Amenity Area',floor:'Level 1',phase:'Rough-In',start:pd(78),finish:pd(92),duration:15,status:'In Progress',pct:55,priority:'Normal',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Fitness room & business center. On track.',linked:[{type:'RFI',ref:'RFI-129 — Business center data outlet count'}]},
+  {id:'ACT-044',name:'Breakfast Area Finishes',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Breakfast Area',floor:'Level 1',phase:'Finishes',start:pd(130),finish:pd(145),duration:16,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:[],successors:[],notes:'Hilton breakfast package FFE to be coordinated.',linked:[]},
+  {id:'ACT-045',name:'Landscaping & Site Hardscape',trade:'Landscaping',sub:'Green Edge Landscape',area:'Exterior / Site',floor:'Site',phase:'Finishes',start:pd(155),finish:pd(168),duration:14,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:[],successors:[],notes:'Irrigation design complete. Plant material on order.',linked:[{type:'Submittal',ref:'SUB-32 90 00-001 Landscape plan'}]},
+  {id:'ACT-046',name:'Parking Lot Striping & Signage',trade:'Sitework',sub:'Earthworks Civil',area:'Parking',floor:'Site',phase:'Finishes',start:pd(160),finish:pd(166),duration:7,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:[],successors:[],notes:'ADA signage included.',linked:[]},
+  {id:'ACT-047',name:'Level 3 Framing Inspection',trade:'General / GC',sub:'Boulder Construction (Self-Perform)',area:'Tower A',floor:'Level 3',phase:'Rough-In',start:pd(99),finish:pd(100),duration:2,status:'Not Started',pct:0,priority:'Critical',blocker:'',milestone:true,lookahead:true,predecessors:['ACT-013','ACT-017'],successors:[],notes:'Schedule with AHJ.',linked:[{type:'Inspection',ref:'Level 3 framing inspection — AHJ'}]},
+  {id:'ACT-048',name:'MEP Rough-In — Level 5 Guestrooms',trade:'HVAC',sub:'Apex Mechanical',area:'Tower A',floor:'Level 5',phase:'Rough-In',start:pd(100),finish:pd(118),duration:19,status:'Not Started',pct:0,priority:'Critical',blocker:'Predecessor not complete',milestone:false,lookahead:true,predecessors:['ACT-007'],successors:[],notes:'Pending L5 steel.',linked:[]},
+  {id:'ACT-049',name:'Electrical Rough-In — Level 3',trade:'Electrical',sub:'Spark Systems Electric',area:'Tower A',floor:'Level 3',phase:'Rough-In',start:pd(84),finish:pd(99),duration:16,status:'In Progress',pct:15,priority:'High',blocker:'',milestone:false,lookahead:true,predecessors:[],successors:[],notes:'Following HVAC.',linked:[]},
+  {id:'ACT-050',name:'Corridor Finishes — Level 2',trade:'Paint',sub:'ProFinish Interiors',area:'Tower A',floor:'Level 2',phase:'Finishes',start:pd(125),finish:pd(135),duration:11,status:'Not Started',pct:0,priority:'Normal',blocker:'',milestone:false,lookahead:false,predecessors:['ACT-020'],successors:[],notes:'Paint, base, corridor carpet.',linked:[]},
+];
+
+// Ensure all have sub from SUBS if missing
+activities.forEach(a => { if (!a.sub) a.sub = SUBS[a.trade] || ''; if (!a.linked) a.linked = []; });
+
+// ─── COMPUTED HELPERS ───
+function getKPIs() {
+  const due_today = activities.filter(a => isoDate(a.finish) === isoDate(TODAY) && a.status !== 'Complete').length;
+  const starting_week = activities.filter(a => isThisWeek(a.start) && a.status !== 'Complete').length;
+  const delayed = activities.filter(a => a.status === 'Delayed').length;
+  const blocked = activities.filter(a => a.status === 'Blocked' || a.blocker).length;
+  const overdue = activities.filter(a => isOverdue(a)).length;
+  const critical = activities.filter(a => a.priority === 'Critical' && a.status !== 'Complete').length;
+  const in_progress = activities.filter(a => a.status === 'In Progress').length;
+  const ready = activities.filter(a => a.status === 'Ready to Start' || (a.status === 'Not Started' && !a.blocker && new Date(a.start) <= addDays(TODAY, 7))).length;
+  const inspections = activities.filter(a => a.linked && a.linked.some(l => l.type === 'Inspection') && a.status !== 'Complete').length;
+  const procurement = activities.filter(a => a.linked && a.linked.some(l => l.type === 'Procurement') && a.status !== 'Complete').length;
+  return { due_today, starting_week, delayed, blocked, overdue, critical, in_progress, ready, inspections, procurement };
+}
+
+// ─── STATE ───
+let currentView = 'dashboard';
+let selectedActivity = null;
+let filterTrade = '';
+let filterArea = '';
+let filterStatus = '';
+let searchQuery = '';
+
+// ─── RENDER ENGINE ───
+function render() {
+  const area = document.getElementById('scheduleArea');
+  const kpis = getKPIs();
+  let html = '';
+
+  // Weather alert
+  html += `<div class="weather-alert">⛅ <strong>Weather Advisory:</strong>&nbsp; Heat advisory Thursday–Friday (94°F+). Concrete pours and exterior work may be impacted. Hydration stations required per OSHA.</div>`;
+
+  // KPI row (always shown on dashboard/today/this-week)
+  if (['dashboard','today','this-week'].includes(currentView)) {
+    html += renderKPIs(kpis);
+  }
+
+  // View content
+  switch(currentView) {
+    case 'dashboard': html += renderDashboard(kpis); break;
+    case 'today': html += renderToday(); break;
+    case 'this-week': html += renderThisWeek(); break;
+    case 'master': html += renderMaster(); break;
+    case 'gantt': html += renderGantt(); break;
+    case 'lookahead-6': html += renderLookahead(42); break;
+    case 'lookahead-3': html += renderLookahead(21); break;
+    case 'milestones': html += renderMilestones(); break;
+    case 'by-trade': html += renderByTrade(); break;
+    case 'by-area': html += renderByArea(); break;
+    case 'by-sub': html += renderBySub(); break;
+    case 'delayed': html += renderFiltered('Delayed'); break;
+    case 'blocked': html += renderFiltered('Blocked'); break;
+    case 'in-progress': html += renderFiltered('In Progress'); break;
+    case 'ready': html += renderReady(); break;
+    case 'completed': html += renderFiltered('Complete'); break;
+    case 'procurement': html += renderProcurement(); break;
+    case 'inspections': html += renderInspections(); break;
+    case 'punch': html += renderPunch(); break;
+    case 'turnover': html += renderTurnover(); break;
+    default: html += renderDashboard(kpis);
+  }
+
+  area.innerHTML = html;
+  attachListeners();
+}
+
+function renderKPIs(k) {
+  return `<div class="kpi-row">
+    <div class="kpi-card info" data-kpi-filter="today"><div class="kpi-label">Due Today</div><div class="kpi-value">${k.due_today}</div><div class="kpi-sub">${fmt(TODAY)}</div></div>
+    <div class="kpi-card info" data-kpi-filter="week"><div class="kpi-label">Starting This Week</div><div class="kpi-value">${k.starting_week}</div></div>
+    <div class="kpi-card alert" data-kpi-filter="delayed"><div class="kpi-label">Delayed</div><div class="kpi-value">${k.delayed}</div></div>
+    <div class="kpi-card warn" data-kpi-filter="blocked"><div class="kpi-label">Blocked / Constrained</div><div class="kpi-value">${k.blocked}</div></div>
+    <div class="kpi-card alert" data-kpi-filter="overdue"><div class="kpi-label">Overdue</div><div class="kpi-value">${k.overdue}</div></div>
+    <div class="kpi-card info"><div class="kpi-label">Critical Path</div><div class="kpi-value">${k.critical}</div></div>
+    <div class="kpi-card ok" data-kpi-filter="in-progress"><div class="kpi-label">In Progress</div><div class="kpi-value">${k.in_progress}</div></div>
+    <div class="kpi-card ok"><div class="kpi-label">Ready to Start</div><div class="kpi-value">${k.ready}</div></div>
+    <div class="kpi-card warn"><div class="kpi-label">Inspections Pending</div><div class="kpi-value">${k.inspections}</div></div>
+    <div class="kpi-card warn"><div class="kpi-label">Procurement Risks</div><div class="kpi-value">${k.procurement}</div></div>
+  </div>`;
+}
+
+function renderDashboard(k) {
+  let html = '';
+  // Milestones strip
+  const milestones = activities.filter(a => a.milestone).sort((a,b) => new Date(a.finish) - new Date(b.finish));
+  html += `<div class="section-header"><div class="section-title">Key Milestones</div><div class="section-count">${milestones.length}</div></div>`;
+  html += `<div class="milestone-strip">`;
+  milestones.forEach(m => {
+    const cls = m.status === 'Complete' ? 'complete' : isOverdue(m) ? 'overdue' : 'upcoming';
+    const stLabel = m.status === 'Complete' ? '✓ Complete' : isOverdue(m) ? '⚠ Overdue' : fmt(m.finish);
+    html += `<div class="milestone-chip ${cls}" data-id="${m.id}"><div class="ms-name">${m.name}</div><div class="ms-date">${fmt(m.start)} → ${fmt(m.finish)}</div><div class="ms-status">${stLabel}</div></div>`;
+  });
+  html += `</div>`;
+
+  // Delayed & blocked
+  const issues = activities.filter(a => a.status === 'Delayed' || a.status === 'Blocked' || (a.blocker && a.status !== 'Complete'));
+  if (issues.length) {
+    html += `<div class="section-header"><div class="section-title">⚠ Delays & Blockers</div><div class="section-count">${issues.length}</div></div>`;
+    html += `<div class="lookahead-grid">`;
+    issues.forEach(a => {
+      html += renderLookaheadCard(a);
+    });
+    html += `</div>`;
+  }
+
+  // This week activities
+  const thisWeek = activities.filter(a => (isThisWeek(a.start) || isThisWeek(a.finish)) && a.status !== 'Complete').sort((a,b) => new Date(a.start) - new Date(b.start));
+  html += `<div class="section-header"><div class="section-title">This Week's Activities</div><div class="section-count">${thisWeek.length}</div></div>`;
+  html += renderFilterBar();
+  html += renderTable(applyFilters(thisWeek));
+  return html;
+}
+
+function renderToday() {
+  const todayItems = activities.filter(a => {
+    const s = new Date(a.start), f = new Date(a.finish);
+    return s <= TODAY && f >= TODAY && a.status !== 'Complete';
+  }).sort((a,b) => a.priority === 'Critical' ? -1 : 1);
+  let html = `<div class="section-header"><div class="section-title">Today — ${fmtFull(TODAY)}</div><div class="section-count">${todayItems.length} active</div></div>`;
+  html += `<div class="lookahead-grid">`;
+  todayItems.forEach(a => { html += renderLookaheadCard(a); });
+  html += `</div>`;
+  return html;
+}
+
+function renderThisWeek() {
+  const items = activities.filter(a => {
+    const s = new Date(a.start), f = new Date(a.finish);
+    const weekStart = addDays(TODAY, -TODAY.getDay());
+    const weekEnd = addDays(weekStart, 6);
+    return ((s <= weekEnd && f >= weekStart) || isThisWeek(a.start) || isThisWeek(a.finish)) && a.status !== 'Complete';
+  }).sort((a,b) => new Date(a.start) - new Date(b.start));
+  let html = `<div class="section-header"><div class="section-title">This Week</div><div class="section-count">${items.length}</div></div>`;
+  html += renderFilterBar();
+  html += renderTable(applyFilters(items));
+  return html;
+}
+
+function renderMaster() {
+  let sorted = [...activities].sort((a,b) => new Date(a.start) - new Date(b.start));
+  let html = `<div class="section-header"><div class="section-title">Master Schedule</div><div class="section-count">${sorted.length} activities</div></div>`;
+  html += renderFilterBar();
+  html += renderTable(applyFilters(sorted));
+  return html;
+}
+
+function renderGantt() {
+  // Simple 6-week Gantt
+  const weeks = [];
+  const ganttStart = addDays(TODAY, -7);
+  for (let i = 0; i < 8; i++) weeks.push(addDays(ganttStart, i * 7));
+  const totalDays = 8 * 7;
+  const items = activities.filter(a => {
+    const f = new Date(a.finish), s = new Date(a.start);
+    return f >= ganttStart && s <= addDays(ganttStart, totalDays) && a.status !== 'Complete';
+  }).sort((a,b) => new Date(a.start) - new Date(b.start));
+
+  let html = `<div class="section-header"><div class="section-title">Timeline — 8-Week View</div><div class="section-count">${items.length} activities</div></div>`;
+  html += `<div class="schedule-table-wrap" style="overflow-x:auto;">`;
+  // header
+  html += `<div class="gantt-header">`;
+  html += `<div style="width:200px;min-width:200px;padding:4px 8px;font-size:10px;font-weight:600;color:var(--text-tertiary);">Activity</div>`;
+  weeks.forEach(w => {
+    const isToday = diffDays(w, TODAY) >= 0 && diffDays(w, TODAY) < 7;
+    html += `<div class="gantt-header-cell${isToday ? ' today-col' : ''}">${fmt(w)}</div>`;
+  });
+  html += `</div>`;
+  // rows
+  items.forEach(a => {
+    const s = Math.max(0, diffDays(ganttStart, a.start));
+    const e = Math.min(totalDays, diffDays(ganttStart, a.finish));
+    const left = (s / totalDays * 100).toFixed(1);
+    const width = (Math.max(1, e - s) / totalDays * 100).toFixed(1);
+    const stCls = a.status === 'In Progress' ? 'status-ip' : a.status === 'Delayed' ? 'status-delayed' : a.status === 'Blocked' ? 'status-blocked' : a.status === 'Complete' ? 'status-done' : 'status-ns';
+    const msCls = a.milestone ? ' milestone-bar' : '';
+    html += `<div class="gantt-row" data-id="${a.id}"><div class="gantt-label">${a.name}</div><div class="gantt-track"><div class="gantt-bar ${stCls}${msCls}" style="left:${left}%;width:${width}%;" title="${a.name} (${fmt(a.start)}–${fmt(a.finish)})">${a.milestone ? '◆' : ''}</div></div></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderLookahead(days) {
+  const items = activities.filter(a => {
+    const s = new Date(a.start);
+    return s >= TODAY && s <= addDays(TODAY, days) && a.status !== 'Complete';
+  }).sort((a,b) => new Date(a.start) - new Date(b.start));
+  const blocked = items.filter(a => a.blocker);
+  const label = days === 42 ? '6-Week' : '3-Week';
+  let html = `<div class="section-header"><div class="section-title">${label} Lookahead</div><div class="section-count">${items.length} activities · ${blocked.length} blocked</div></div>`;
+  html += renderFilterBar();
+  html += `<div class="lookahead-grid">`;
+  applyFilters(items).forEach(a => { html += renderLookaheadCard(a); });
+  html += `</div>`;
+  return html;
+}
+
+function renderMilestones() {
+  const items = activities.filter(a => a.milestone).sort((a,b) => new Date(a.finish) - new Date(b.finish));
+  let html = `<div class="section-header"><div class="section-title">Milestones</div><div class="section-count">${items.length}</div></div>`;
+  html += `<div class="milestone-strip" style="flex-wrap:wrap;">`;
+  items.forEach(m => {
+    const cls = m.status === 'Complete' ? 'complete' : isOverdue(m) ? 'overdue' : 'upcoming';
+    const stLabel = m.status === 'Complete' ? '✓ Complete' : isOverdue(m) ? '⚠ Overdue' : `Target: ${fmt(m.finish)}`;
+    html += `<div class="milestone-chip ${cls}" data-id="${m.id}" style="min-width:220px;"><div class="ms-name">${m.name}</div><div class="ms-date">${fmt(m.start)} → ${fmt(m.finish)}</div><div class="ms-status">${stLabel}</div></div>`;
+  });
+  html += `</div>`;
+  html += renderTable(items);
+  return html;
+}
+
+function renderByTrade() {
+  const grouped = {};
+  activities.forEach(a => { if (!grouped[a.trade]) grouped[a.trade] = []; grouped[a.trade].push(a); });
+  let html = `<div class="section-header"><div class="section-title">Schedule by Trade</div></div>`;
+  html += renderFilterBar();
+  const trades = Object.keys(grouped).sort();
+  trades.forEach(t => {
+    const items = grouped[t].sort((a,b) => new Date(a.start) - new Date(b.start));
+    const active = items.filter(a => a.status !== 'Complete');
+    const delayed = items.filter(a => a.status === 'Delayed' || a.status === 'Blocked');
+    if (filterTrade && t !== filterTrade) return;
+    html += `<div class="trade-group"><div class="trade-group-header"><h4>⚒ ${t}</h4><span class="trade-count">${active.length} active · ${delayed.length} issues</span><span style="margin-left:auto;font-size:11px;color:var(--text-tertiary);">${SUBS[t] || ''}</span></div>`;
+    html += renderTable(items, true);
+    html += `</div>`;
+  });
+  return html;
+}
+
+function renderByArea() {
+  const grouped = {};
+  activities.forEach(a => { const key = `${a.area} — ${a.floor}`; if (!grouped[key]) grouped[key] = []; grouped[key].push(a); });
+  let html = `<div class="section-header"><div class="section-title">Schedule by Area / Floor</div></div>`;
+  html += renderFilterBar();
+  Object.keys(grouped).sort().forEach(key => {
+    const items = grouped[key].sort((a,b) => new Date(a.start) - new Date(b.start));
+    if (filterArea && !key.includes(filterArea)) return;
+    const active = items.filter(a => a.status !== 'Complete');
+    html += `<div class="trade-group"><div class="trade-group-header"><h4>▣ ${key}</h4><span class="trade-count">${active.length} active</span></div>`;
+    html += renderTable(items, true);
+    html += `</div>`;
+  });
+  return html;
+}
+
+function renderBySub() {
+  const grouped = {};
+  activities.forEach(a => { if (!grouped[a.sub]) grouped[a.sub] = []; grouped[a.sub].push(a); });
+  let html = `<div class="section-header"><div class="section-title">Schedule by Subcontractor</div></div>`;
+  Object.keys(grouped).sort().forEach(sub => {
+    const items = grouped[sub].sort((a,b) => new Date(a.start) - new Date(b.start));
+    const active = items.filter(a => a.status !== 'Complete');
+    const delayed = items.filter(a => a.status === 'Delayed' || a.status === 'Blocked');
+    html += `<div class="trade-group"><div class="trade-group-header"><h4>⊞ ${sub}</h4><span class="trade-count">${active.length} active · ${delayed.length} issues</span></div>`;
+    html += renderTable(items, true);
+    html += `</div>`;
+  });
+  return html;
+}
+
+function renderFiltered(status) {
+  const items = activities.filter(a => a.status === status).sort((a,b) => new Date(a.start) - new Date(b.start));
+  let html = `<div class="section-header"><div class="section-title">${status} Activities</div><div class="section-count">${items.length}</div></div>`;
+  html += renderFilterBar();
+  if (status === 'Delayed' || status === 'Blocked') {
+    html += `<div class="lookahead-grid">`;
+    applyFilters(items).forEach(a => { html += renderLookaheadCard(a); });
+    html += `</div>`;
+  } else {
+    html += renderTable(applyFilters(items));
+  }
+  return html;
+}
+
+function renderReady() {
+  const items = activities.filter(a => a.status === 'Ready to Start' || (a.status === 'Not Started' && !a.blocker && new Date(a.start) <= addDays(TODAY, 7))).sort((a,b) => new Date(a.start) - new Date(b.start));
+  let html = `<div class="section-header"><div class="section-title">Ready to Start</div><div class="section-count">${items.length}</div></div>`;
+  html += `<div class="lookahead-grid">`;
+  items.forEach(a => { html += renderLookaheadCard(a); });
+  html += `</div>`;
+  return html;
+}
+
+function renderProcurement() {
+  const items = activities.filter(a => a.linked && a.linked.some(l => l.type === 'Procurement') && a.status !== 'Complete');
+  let html = `<div class="section-header"><div class="section-title">Procurement & Long Lead Items</div><div class="section-count">${items.length}</div></div>`;
+  html += `<div class="lookahead-grid">`;
+  items.forEach(a => {
+    const procItems = a.linked.filter(l => l.type === 'Procurement');
+    html += `<div class="lookahead-card" data-id="${a.id}"><div class="la-top"><div><div class="la-name">${a.name}</div><div class="la-id">${a.id}</div></div>${renderStatusBadge(a)}</div><div class="la-meta"><span class="la-tag">${a.trade}</span><span class="la-tag">${a.floor}</span></div><div class="la-dates">${fmt(a.start)} → ${fmt(a.finish)}</div>`;
+    procItems.forEach(p => { html += `<div style="font-size:11px;color:var(--orange);font-weight:500;margin-top:2px;">📦 ${p.ref}</div>`; });
+    html += `</div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderInspections() {
+  const items = activities.filter(a => a.linked && a.linked.some(l => l.type === 'Inspection') && a.status !== 'Complete');
+  let html = `<div class="section-header"><div class="section-title">Inspections & Permits</div><div class="section-count">${items.length}</div></div>`;
+  html += `<div class="lookahead-grid">`;
+  items.forEach(a => {
+    const insp = a.linked.filter(l => l.type === 'Inspection');
+    html += `<div class="lookahead-card" data-id="${a.id}"><div class="la-top"><div><div class="la-name">${a.name}</div><div class="la-id">${a.id}</div></div>${renderStatusBadge(a)}</div><div class="la-meta"><span class="la-tag">${a.trade}</span><span class="la-tag">${a.area}</span></div><div class="la-dates">${fmt(a.start)} → ${fmt(a.finish)}</div>`;
+    insp.forEach(p => { html += `<div style="font-size:11px;color:var(--purple);font-weight:500;margin-top:2px;">✎ ${p.ref}</div>`; });
+    html += `</div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+function renderPunch() {
+  const items = activities.filter(a => a.phase === 'Punch / Closeout' || a.phase === 'Turnover').sort((a,b) => new Date(a.start) - new Date(b.start));
+  let html = `<div class="section-header"><div class="section-title">Punch & Closeout</div><div class="section-count">${items.length}</div></div>`;
+  html += renderTable(items);
+  return html;
+}
+
+function renderTurnover() {
+  const areas = ['Tower A — Level 2','Tower A — Level 3','Tower A — Level 4','Tower A — Level 5','Lobby / Front Desk','Back of House','Amenity Area','Breakfast Area','Pool Deck','Exterior / Site'];
+  let html = `<div class="section-header"><div class="section-title">Area Turnover Tracker</div></div>`;
+  html += `<div class="turnover-grid">`;
+  areas.forEach(area => {
+    const parts = area.split(' — ');
+    const areaActs = activities.filter(a => {
+      if (parts.length === 2) return a.area === parts[0].trim() && a.floor === parts[1].trim();
+      return a.area === parts[0].trim();
+    });
+    const total = areaActs.length || 1;
+    const done = areaActs.filter(a => a.status === 'Complete').length;
+    const pct = Math.round(done / total * 100);
+    const ip = areaActs.filter(a => a.status === 'In Progress').length;
+    const delayed = areaActs.filter(a => a.status === 'Delayed' || a.status === 'Blocked').length;
+    const color = pct === 100 ? 'var(--green)' : pct > 50 ? 'var(--accent)' : pct > 20 ? 'var(--yellow)' : 'var(--orange)';
+    html += `<div class="turnover-card"><div class="turnover-area">${area}</div><div class="turnover-bar"><div class="turnover-fill" style="width:${pct}%;background:${color};"></div></div><div class="turnover-pct">${pct}% complete · ${done}/${total} activities</div><div class="turnover-items">${ip} in progress · ${delayed} issues</div></div>`;
+  });
+  html += `</div>`;
+  return html;
+}
+
+// ─── REUSABLE COMPONENTS ───
+function renderFilterBar() {
+  return `<div class="filter-bar">
+    <select class="filter-trade" onchange="filterTrade=this.value;render();">
+      <option value="">All Trades</option>${TRADES.map(t => `<option ${filterTrade===t?'selected':''}>${t}</option>`).join('')}
+    </select>
+    <select class="filter-area" onchange="filterArea=this.value;render();">
+      <option value="">All Areas</option>
+      <option>Tower A</option><option>Tower B</option><option>Lobby / Front Desk</option><option>Back of House</option><option>Amenity Area</option><option>Exterior / Site</option><option>Parking</option><option>Pool Deck</option><option>Breakfast Area</option>
+    </select>
+    <select class="filter-status" onchange="filterStatus=this.value;render();">
+      <option value="">All Statuses</option>
+      <option>Not Started</option><option>In Progress</option><option>Complete</option><option>Delayed</option><option>Blocked</option><option>Ready to Start</option>
+    </select>
+    <button class="btn-secondary" onclick="filterTrade='';filterArea='';filterStatus='';searchQuery='';document.getElementById('globalSearch').value='';render();">Clear Filters</button>
+  </div>`;
+}
+
+function applyFilters(items) {
+  return items.filter(a => {
+    if (filterTrade && a.trade !== filterTrade) return false;
+    if (filterArea && a.area !== filterArea) return false;
+    if (filterStatus && a.status !== filterStatus) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return a.name.toLowerCase().includes(q) || a.trade.toLowerCase().includes(q) || a.sub.toLowerCase().includes(q) || a.area.toLowerCase().includes(q) || a.id.toLowerCase().includes(q);
+    }
+    return true;
+  });
+}
+
+function renderStatusBadge(a) {
+  const cls = a.status === 'In Progress' ? 'in-progress' : a.status === 'Complete' ? 'complete' : a.status === 'Delayed' ? 'delayed' : a.status === 'Blocked' ? 'blocked' : a.status === 'Ready to Start' ? 'ready' : 'not-started';
+  return `<span class="status ${cls}">${a.status}</span>`;
+}
+
+function renderPctBar(pct) {
+  const cls = pct >= 75 ? 'high' : pct >= 40 ? 'mid' : 'low';
+  return `<div class="pct-bar"><div class="pct-track"><div class="pct-fill ${cls}" style="width:${pct}%"></div></div><span class="pct-text">${pct}%</span></div>`;
+}
+
+function renderTable(items, compact) {
+  if (!items.length) return `<div class="empty-state"><h3>No activities found</h3><p>Adjust filters or add new activities.</p></div>`;
+  let html = `<div class="schedule-table-wrap"><div class="table-scroll"><table class="schedule-table"><thead><tr>
+    <th>ID</th><th>Activity</th><th>Trade</th>
+    <th class="col-hide-mobile">Area</th>
+    <th>Start</th><th>Finish</th>
+    <th class="col-hide-mobile">Duration</th>
+    <th>Status</th><th>Progress</th>
+    <th class="col-hide-mobile">Priority</th>
+    <th class="col-hide-mobile">Blocker</th>
+  </tr></thead><tbody>`;
+  items.forEach(a => {
+    const overdueCls = isOverdue(a) ? ' overdue' : '';
+    html += `<tr class="${overdueCls}" data-id="${a.id}">
+      <td><span class="activity-id">${a.id}</span></td>
+      <td><span class="activity-name">${a.milestone ? '◆ ' : ''}${a.name}</span></td>
+      <td><span class="trade-badge">${a.trade}</span></td>
+      <td class="col-hide-mobile">${a.area}${a.floor ? ' · '+a.floor : ''}</td>
+      <td>${fmt(a.start)}</td>
+      <td>${fmt(a.finish)}</td>
+      <td class="col-hide-mobile">${a.duration}d</td>
+      <td>${renderStatusBadge(a)}</td>
+      <td>${renderPctBar(a.pct)}</td>
+      <td class="col-hide-mobile"><span class="priority-dot ${a.priority.toLowerCase()}"></span>${a.priority}</td>
+      <td class="col-hide-mobile">${a.blocker ? `<span class="blocker-tag">${a.blocker}</span>` : '—'}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div></div>`;
+  return html;
+}
+
+function renderLookaheadCard(a) {
+  const hasBl = a.blocker || a.status === 'Blocked' || a.status === 'Delayed';
+  const cls = hasBl ? 'has-blocker' : (a.status === 'Not Started' && !a.blocker && new Date(a.start) <= addDays(TODAY, 7)) ? 'ready-soon' : '';
+  const daysOut = diffDays(TODAY, a.start);
+  const daysLabel = daysOut === 0 ? 'Today' : daysOut === 1 ? 'Tomorrow' : daysOut < 0 ? `${Math.abs(daysOut)}d ago` : `In ${daysOut} days`;
+  return `<div class="lookahead-card ${cls}" data-id="${a.id}">
+    <div class="la-top"><div><div class="la-name"><span class="priority-dot ${a.priority.toLowerCase()}"></span>${a.milestone ? '◆ ' : ''}${a.name}</div><div class="la-id">${a.id} · ${a.sub}</div></div>${renderStatusBadge(a)}</div>
+    <div class="la-meta"><span class="la-tag">${a.trade}</span><span class="la-tag">${a.area}</span>${a.floor ? `<span class="la-tag">${a.floor}</span>` : ''}<span class="la-tag">${daysLabel}</span></div>
+    <div class="la-dates">${fmt(a.start)} → ${fmt(a.finish)} · ${a.duration}d · ${a.pct}% complete</div>
+    ${a.blocker ? `<div class="la-blocker">⚠ ${a.blocker}</div>` : ''}
+    ${a.linked && a.linked.length ? a.linked.map(l => `<div style="font-size:10.5px;color:var(--text-secondary);margin-top:2px;">🔗 ${l.type}: ${l.ref}</div>`).join('') : ''}
+    <div class="la-actions">
+      <button onclick="event.stopPropagation();quickUpdate('${a.id}','pct',Math.min(100,${a.pct}+25))">+25%</button>
+      <button onclick="event.stopPropagation();quickUpdate('${a.id}','status','In Progress')">▶ Start</button>
+      <button class="quick-complete" onclick="event.stopPropagation();quickUpdate('${a.id}','status','Complete')">✓ Complete</button>
+      <button onclick="event.stopPropagation();quickUpdate('${a.id}','status','Delayed')" style="color:var(--red);">⚠ Delay</button>
+    </div>
+  </div>`;
+}
+
+// ─── DETAIL PANEL ───
+function openDetail(id) {
+  const a = activities.find(x => x.id === id);
+  if (!a) return;
+  selectedActivity = a;
+  const panel = document.getElementById('detailPanel');
+  panel.classList.remove('closed');
+  document.getElementById('detailTitle', a.name);
+  const inner = document.getElementById('detailInner');
+
+  let html = `
+    <div class="detail-progress-update">
+      <span style="font-size:12px;font-weight:500;">Progress</span>
+      <input type="range" class="progress-slider" min="0" max="100" value="${a.pct}" oninput="document.getElementById('progressVal').textContent=this.value+'%'" onchange="quickUpdate('${a.id}','pct',parseInt(this.value))">
+      <span class="progress-val" id="progressVal">${a.pct}%</span>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Activity Summary</div>
+      <div class="detail-field"><div class="detail-label">Activity Name</div><div class="detail-value">${a.name}</div></div>
+      <div class="detail-row">
+        <div class="detail-field"><div class="detail-label">ID</div><div class="detail-value" style="font-family:var(--font-mono);font-size:12px;">${a.id}</div></div>
+        <div class="detail-field"><div class="detail-label">Status</div><div class="detail-value">${renderStatusBadge(a)}</div></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-field"><div class="detail-label">Priority</div><div class="detail-value"><span class="priority-dot ${a.priority.toLowerCase()}"></span>${a.priority}</div></div>
+        <div class="detail-field"><div class="detail-label">Phase</div><div class="detail-value">${a.phase}</div></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Schedule</div>
+      <div class="detail-row">
+        <div class="detail-field"><div class="detail-label">Start Date</div><div class="detail-value">${fmtFull(a.start)}</div></div>
+        <div class="detail-field"><div class="detail-label">Finish Date</div><div class="detail-value">${fmtFull(a.finish)}</div></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-field"><div class="detail-label">Duration</div><div class="detail-value">${a.duration} days</div></div>
+        <div class="detail-field"><div class="detail-label">% Complete</div><div class="detail-value">${a.pct}%</div></div>
+      </div>
+      ${isOverdue(a) ? `<div style="color:var(--red);font-size:12px;font-weight:600;margin-top:4px;">⚠ Overdue by ${diffDays(a.finish, TODAY)} days</div>` : ''}
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Location & Trade</div>
+      <div class="detail-row">
+        <div class="detail-field"><div class="detail-label">Trade</div><div class="detail-value">${a.trade}</div></div>
+        <div class="detail-field"><div class="detail-label">Subcontractor</div><div class="detail-value">${a.sub}</div></div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-field"><div class="detail-label">Area</div><div class="detail-value">${a.area}</div></div>
+        <div class="detail-field"><div class="detail-label">Floor</div><div class="detail-value">${a.floor}</div></div>
+      </div>
+    </div>
+    ${a.blocker ? `<div class="detail-section"><div class="detail-section-title">Constraint / Blocker</div><div class="detail-field"><div class="detail-value"><span class="blocker-tag">${a.blocker}</span></div></div></div>` : ''}
+    ${a.predecessors && a.predecessors.length ? `<div class="detail-section"><div class="detail-section-title">Predecessors</div>${a.predecessors.map(p => { const pa = activities.find(x=>x.id===p); return pa ? `<div class="detail-linked-item" data-id="${p}"><span class="link-type">PRED</span>${pa.name} (${pa.status})</div>` : ''; }).join('')}</div>` : ''}
+    ${a.successors && a.successors.length ? `<div class="detail-section"><div class="detail-section-title">Successors</div>${a.successors.map(s => { const sa = activities.find(x=>x.id===s); return sa ? `<div class="detail-linked-item" data-id="${s}"><span class="link-type">SUCC</span>${sa.name} (${sa.status})</div>` : ''; }).join('')}</div>` : ''}
+    ${a.linked && a.linked.length ? `<div class="detail-section"><div class="detail-section-title">Linked Items</div>${a.linked.map(l => `<div class="detail-linked-item"><span class="link-type">${l.type}</span>${l.ref}</div>`).join('')}</div>` : ''}
+    <div class="detail-section">
+      <div class="detail-section-title">Notes & Updates</div>
+      ${a.notes ? `<div class="detail-note"><div class="note-meta">Field note · ${fmt(TODAY)}</div><div class="note-text">${a.notes}</div></div>` : '<div style="font-size:12px;color:var(--text-tertiary);">No notes yet.</div>'}
+      <div style="margin-top:8px;">
+        <textarea class="form-textarea" id="newNote" placeholder="Add a field note or update…" style="font-size:12px;min-height:48px;"></textarea>
+        <button class="btn-secondary" style="margin-top:4px;" onclick="addNote('${a.id}')">Add Note</button>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Quick Field Updates</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button class="quick-btn" onclick="quickUpdate('${a.id}','status','In Progress')">▶ Mark In Progress</button>
+        <button class="quick-btn" onclick="quickUpdate('${a.id}','status','Complete')">✓ Mark Complete</button>
+        <button class="quick-btn danger" onclick="quickUpdate('${a.id}','status','Delayed')">⚠ Mark Delayed</button>
+        <button class="quick-btn danger" onclick="quickUpdate('${a.id}','status','Blocked')">✕ Mark Blocked</button>
+        <button class="quick-btn" onclick="quickUpdate('${a.id}','pct',25)">25%</button>
+        <button class="quick-btn" onclick="quickUpdate('${a.id}','pct',50)">50%</button>
+        <button class="quick-btn" onclick="quickUpdate('${a.id}','pct',75)">75%</button>
+        <button class="quick-btn" onclick="quickUpdate('${a.id}','pct',100)">100%</button>
+      </div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Assign Blocker</div>
+      <select class="form-select" onchange="quickUpdate('${a.id}','blocker',this.value)" style="font-size:12px;">
+        <option value="" ${!a.blocker?'selected':''}>None</option>
+        <option ${a.blocker==='Predecessor not complete'?'selected':''}>Predecessor not complete</option>
+        <option ${a.blocker==='Material not on site'?'selected':''}>Material not on site</option>
+        <option ${a.blocker==='RFI pending'?'selected':''}>RFI pending</option>
+        <option ${a.blocker==='Submittal pending'?'selected':''}>Submittal pending</option>
+        <option ${a.blocker==='Inspection required'?'selected':''}>Inspection required</option>
+        <option ${a.blocker==='Permit required'?'selected':''}>Permit required</option>
+        <option ${a.blocker==='Owner decision pending'?'selected':''}>Owner decision pending</option>
+        <option ${a.blocker==='Weather delay'?'selected':''}>Weather delay</option>
+        <option ${a.blocker==='Manpower shortage'?'selected':''}>Manpower shortage</option>
+        <option ${a.blocker==='Design clarification'?'selected':''}>Design clarification</option>
+      </select>
+    </div>
+    <div class="detail-section" style="opacity:.5;">
+      <div class="detail-section-title">Attachments</div>
+      <div style="font-size:12px;color:var(--text-tertiary);">📎 Tap to attach a photo or document (placeholder)</div>
+    </div>
+  `;
+  inner.innerHTML = html;
+
+  // Detail linked item clicks
+  inner.querySelectorAll('.detail-linked-item[data-id]').forEach(el => {
+    el.addEventListener('click', () => openDetail(el.dataset.id));
+  });
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.add('closed');
+  selectedActivity = null;
+}
+
+// ─── QUICK UPDATES ───
+function quickUpdate(id, field, value) {
+  const a = activities.find(x => x.id === id);
+  if (!a) return;
+  if (field === 'pct') {
+    a.pct = Math.min(100, Math.max(0, parseInt(value)));
+    if (a.pct === 100) a.status = 'Complete';
+    else if (a.pct > 0 && a.status === 'Not Started') a.status = 'In Progress';
+  } else if (field === 'status') {
+    a.status = value;
+    if (value === 'Complete') a.pct = 100;
+    if (value === 'In Progress' && a.pct === 0) a.pct = 5;
+  } else if (field === 'blocker') {
+    a.blocker = value;
+    if (value && a.status !== 'Delayed') a.status = 'Blocked';
+    if (!value && a.status === 'Blocked') a.status = a.pct > 0 ? 'In Progress' : 'Not Started';
+  }
+  showToast(`${a.id} updated — ${field}: ${value}`);
+  render();
+  if (selectedActivity && selectedActivity.id === id) openDetail(id);
+}
+
+function addNote(id) {
+  const note = document.getElementById('newNote')?.value;
+  if (!note) return;
+  const a = activities.find(x => x.id === id);
+  if (a) { a.notes = note + (a.notes ? '\n\n' + a.notes : ''); }
+  showToast('Note added');
+  openDetail(id);
+}
+
+// ─── MODAL ───
+function openModal() {
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('fName').value = '';
+  document.getElementById('fNotes').value = '';
+  document.getElementById('fPct').value = '0';
+  document.getElementById('fStart').value = isoDate(TODAY);
+  document.getElementById('fFinish').value = isoDate(addDays(TODAY, 14));
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+function saveActivity() {
+  const name = document.getElementById('fName').value.trim();
+  if (!name) { showToast('Activity name is required'); return; }
+  const trade = document.getElementById('fTrade').value;
+  const a = {
+    id: genId(),
+    name,
+    trade: trade || 'General / GC',
+    sub: document.getElementById('fSub').value || SUBS[trade] || '',
+    area: document.getElementById('fArea').value || 'Tower A',
+    floor: document.getElementById('fFloor').value || '',
+    phase: document.getElementById('fPhase').value || '',
+    start: new Date(document.getElementById('fStart').value || TODAY),
+    finish: new Date(document.getElementById('fFinish').value || addDays(TODAY, 14)),
+    duration: diffDays(document.getElementById('fStart').value || TODAY, document.getElementById('fFinish').value || addDays(TODAY, 14)),
+    status: document.getElementById('fStatus').value || 'Not Started',
+    pct: parseInt(document.getElementById('fPct').value) || 0,
+    priority: document.getElementById('fPriority').value || 'Normal',
+    blocker: document.getElementById('fBlocker').value || '',
+    milestone: document.getElementById('fMilestone').value === 'Yes',
+    lookahead: document.getElementById('fLookahead').value === 'Yes',
+    predecessors: [],
+    successors: [],
+    notes: document.getElementById('fNotes').value || '',
+    linked: []
+  };
+  activities.push(a);
+  closeModal();
+  showToast(`Activity ${a.id} created`);
+  render();
+}
+
+// ─── EVENT LISTENERS ───
+function attachListeners() {
+  // Table row clicks
+  document.querySelectorAll('.schedule-table tbody tr[data-id], .lookahead-card[data-id], .milestone-chip[data-id], .gantt-row[data-id]').forEach(el => {
+    el.addEventListener('click', () => openDetail(el.dataset.id));
+  });
+}
+
+// Sidebar nav
+document.querySelectorAll('.nav-item[data-view]').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    item.classList.add('active');
+    currentView = item.dataset.view;
+    filterTrade = ''; filterArea = ''; filterStatus = '';
+    render();
+    closeSidebar();
+  });
+});
+
+// Header buttons
+document.getElementById('btnAddActivity').addEventListener('click', openModal);
+document.getElementById('btnCloseModal').addEventListener('click', closeModal);
+document.getElementById('btnCancelModal').addEventListener('click', closeModal);
+document.getElementById('btnSaveActivity').addEventListener('click', saveActivity);
+document.getElementById('btnCloseDetail').addEventListener('click', closeDetail);
+document.getElementById('modalOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+
+// Search
+document.getElementById('globalSearch').addEventListener('input', e => {
+  searchQuery = e.target.value;
+  render();
+});
+
+// Mobile sidebar
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+document.getElementById('btnMenu').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+});
+document.getElementById('sidebarOverlay').addEventListener('click', closeSidebar);
+
+// Toast
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ─── INIT ───
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Add Schedule Activity</h2>
+      <button class="btn-icon" id="btnCloseModal">&#10007;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Activity Name *</label>
+        <input class="form-input" id="fName" placeholder="e.g., MEP rough-in level 3">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Trade</label>
+          <select class="form-select" id="fTrade">
+            <option value="">&mdash; Select &mdash;</option>
+            <option>General / GC</option><option>Concrete</option><option>Framing</option><option>Drywall</option><option>Paint</option>
+            <option>HVAC</option><option>Plumbing</option><option>Electrical</option><option>Low Voltage</option>
+            <option>Fire Alarm</option><option>Flooring</option><option>Sitework</option><option>Roofing</option>
+            <option>Glazing</option><option>Doors/Frames/HW</option><option>Specialties</option><option>Casework</option>
+            <option>Elevator</option><option>Landscaping</option><option>Fire Sprinkler</option><option>Insulation</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subcontractor</label>
+          <input class="form-input" id="fSub" placeholder="e.g., Apex Mechanical">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Area / Building</label>
+          <select class="form-select" id="fArea">
+            <option value="">&mdash; Select &mdash;</option>
+            <option>Tower A</option><option>Tower B</option><option>Lobby / Front Desk</option>
+            <option>Back of House</option><option>Amenity Area</option><option>Exterior / Site</option>
+            <option>Parking</option><option>Pool Deck</option><option>Breakfast Area</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Floor</label>
+          <select class="form-select" id="fFloor">
+            <option value="">&mdash; Select &mdash;</option>
+            <option>Level 1</option><option>Level 2</option><option>Level 3</option>
+            <option>Level 4</option><option>Level 5</option><option>Roof</option><option>Site</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Phase</label>
+          <select class="form-select" id="fPhase">
+            <option value="">&mdash; Select &mdash;</option>
+            <option>Sitework</option><option>Foundation</option><option>Structure</option>
+            <option>Rough-In</option><option>Close-In</option><option>Finishes</option>
+            <option>Punch / Closeout</option><option>Turnover</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <select class="form-select" id="fPriority">
+            <option>Normal</option><option>Critical</option><option>High</option><option>Low</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input class="form-input" type="date" id="fStart">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Finish Date</label>
+          <input class="form-input" type="date" id="fFinish">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="fStatus">
+            <option>Not Started</option><option>In Progress</option><option>Complete</option>
+            <option>Delayed</option><option>Blocked</option><option>Ready to Start</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">% Complete</label>
+          <input class="form-input" type="number" id="fPct" min="0" max="100" value="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Constraint / Blocker</label>
+        <select class="form-select" id="fBlocker">
+          <option value="">None</option>
+          <option>Predecessor not complete</option><option>Material not on site</option>
+          <option>RFI pending</option><option>Submittal pending</option>
+          <option>Inspection required</option><option>Permit required</option>
+          <option>Owner decision pending</option><option>Weather delay</option>
+          <option>Manpower shortage</option><option>Design clarification</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Milestone</label>
+          <select class="form-select" id="fMilestone"><option>No</option><option>Yes</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Lookahead Flag</label>
+          <select class="form-select" id="fLookahead"><option>Yes</option><option>No</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="fNotes" placeholder="Field notes, coordination notes, etc."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" id="btnCancelModal">Cancel</button>
+      <button class="btn-primary" id="btnSaveActivity">Save Activity</button>
+    </div>
+  </div>
+</div>
