@@ -325,44 +325,90 @@ function initBarResize() {
   });
 }
 
-// ─── BAR DRAG-TO-MOVE (shift entire bar = move start+finish dates) ───
+// ─── BAR DRAG-TO-MOVE (horizontal = dates, vertical = reassign trade row) ───
 function initBarDrag() {
   const pxDay = window._ganttPxPerDay || 18;
+  const ROW_H = 26; // match gantt-bar-row height
+
+  // Disable timeline drag-scroll while bar dragging
+  let _barDragging = false;
+  const timeline = document.getElementById('ganttTimeline');
+  if (timeline) {
+    timeline.addEventListener('mousedown', e => {
+      if (_barDragging) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
+
+  // Collect all bar rows for vertical drop targets
+  const barRows = [...document.querySelectorAll('.gantt-bar-row[data-id]')];
 
   document.querySelectorAll('.gantt-bar-v2').forEach(bar => {
     bar.addEventListener('mousedown', e => {
-      // Skip if clicking resize handles
       if (e.target.closest('.gantt-resize-handle')) return;
 
       const actId = bar.dataset.actid;
       if (!actId) return;
 
+      e.preventDefault();
+      e.stopPropagation();
+      _barDragging = true;
+
       const startX = e.clientX;
+      const startY = e.clientY;
       const startLeft = bar.offsetLeft;
+      const startTop = bar.offsetTop;
+      const barRow = bar.closest('.gantt-bar-row');
       let dragged = false;
+      let dropTargetRow = null;
 
       bar.style.transition = 'none';
-      bar.style.zIndex = '10';
+      bar.style.zIndex = '100';
       bar.style.cursor = 'grabbing';
-      bar.style.opacity = '0.8';
+      bar.style.opacity = '0.75';
+      bar.style.boxShadow = '0 4px 16px rgba(0,0,0,.2)';
 
       const onMove = ev => {
         const dx = ev.clientX - startX;
-        if (Math.abs(dx) < 4) return;
+        const dy = ev.clientY - startY;
+        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
         dragged = true;
+
+        // Move bar horizontally
         bar.style.left = (startLeft + dx) + 'px';
+        // Move bar vertically (allow cross-row)
+        bar.style.top = (startTop + dy) + 'px';
+        bar.style.position = 'absolute';
+
+        // Highlight drop target row
+        barRows.forEach(r => r.style.background = '');
+        const hoveredRow = barRows.find(r => {
+          const rect = r.getBoundingClientRect();
+          return ev.clientY >= rect.top && ev.clientY <= rect.bottom && r !== barRow;
+        });
+        if (hoveredRow) {
+          hoveredRow.style.background = 'rgba(232,121,59,.08)';
+          dropTargetRow = hoveredRow;
+        } else {
+          dropTargetRow = null;
+        }
       };
 
       const onUp = ev => {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
+        _barDragging = false;
+
         bar.style.transition = '';
         bar.style.zIndex = '';
         bar.style.cursor = '';
         bar.style.opacity = '';
+        bar.style.boxShadow = '';
+        bar.style.top = '';
+
+        // Clear highlights
+        barRows.forEach(r => r.style.background = '');
 
         if (!dragged) {
-          // Single click — open detail if sidebar on
           if (ganttSidebarOn) openDetail(actId);
           return;
         }
@@ -370,19 +416,37 @@ function initBarDrag() {
         const a = activities.find(x => x.id === actId);
         if (!a) return;
 
+        // Horizontal: calculate day shift
         const dx = ev.clientX - startX;
         const daysDelta = Math.round(dx / pxDay);
-        if (daysDelta === 0) { render(); return; }
 
-        // Move both start and finish by same delta (keep duration)
-        a.start = addDays(new Date(a.start), daysDelta);
-        a.finish = addDays(new Date(a.finish), daysDelta);
+        // Vertical: if dropped on different row, swap trade/position
+        if (dropTargetRow) {
+          const targetId = dropTargetRow.dataset.id;
+          const targetAct = activities.find(x => x.id === targetId);
+          if (targetAct && targetAct.id !== a.id) {
+            // Reassign trade to target's trade
+            const oldTrade = a.trade;
+            a.trade = targetAct.trade;
+            a.sub = targetAct.sub || SUBS[a.trade] || '';
+            a.area = targetAct.area;
+            a.floor = targetAct.floor;
+            showToast(`${a.id} moved to ${a.trade} (was ${oldTrade})`);
+          }
+        }
 
-        const timeline = document.getElementById('ganttTimeline');
+        if (daysDelta !== 0) {
+          a.start = addDays(new Date(a.start), daysDelta);
+          a.finish = addDays(new Date(a.finish), daysDelta);
+        }
+
         const scrollPos = timeline ? timeline.scrollLeft : 0;
 
-        showToast(`${a.id} moved: ${fmt(a.start)} \u2013 ${fmt(a.finish)}`);
-        debouncedSave(actId);
+        if (daysDelta !== 0 || dropTargetRow) {
+          showToast(`${a.id}: ${fmt(a.start)} \u2013 ${fmt(a.finish)} | ${a.trade}`);
+          debouncedSave(actId);
+        }
+
         render();
         requestAnimationFrame(() => {
           const tl = document.getElementById('ganttTimeline');
@@ -390,7 +454,6 @@ function initBarDrag() {
         });
       };
 
-      e.preventDefault();
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
@@ -429,7 +492,7 @@ function initDragScroll(el) {
   el.style.cursor = 'grab';
 
   el.addEventListener('mousedown', e => {
-    if (e.target.closest('button, a, input, select')) return;
+    if (e.target.closest('button, a, input, select, .gantt-bar-v2, .gantt-resize-handle')) return;
     isDown = true;
     el.style.cursor = 'grabbing';
     startX = e.pageX - el.offsetLeft;
