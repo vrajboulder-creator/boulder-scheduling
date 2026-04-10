@@ -354,6 +354,12 @@ function initBarDrag() {
       e.stopPropagation();
       _barDragging = true;
 
+      // Lock all scrolling while dragging
+      document.body.style.overflow = 'hidden';
+      const schedArea = document.getElementById('scheduleArea');
+      if (schedArea) schedArea.style.overflow = 'hidden';
+      if (timeline) timeline.style.overflowY = 'hidden';
+
       const startX = e.clientX;
       const startY = e.clientY;
       const startLeft = bar.offsetLeft;
@@ -398,6 +404,12 @@ function initBarDrag() {
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
         _barDragging = false;
+
+        // Unlock scrolling
+        document.body.style.overflow = '';
+        const schedArea2 = document.getElementById('scheduleArea');
+        if (schedArea2) schedArea2.style.overflow = '';
+        if (timeline) timeline.style.overflowY = '';
 
         bar.style.transition = '';
         bar.style.zIndex = '';
