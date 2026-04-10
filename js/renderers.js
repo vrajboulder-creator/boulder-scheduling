@@ -202,9 +202,11 @@ function renderGantt() {
   if (!window._ganttFrom) window._ganttFrom = '';
   if (!window._ganttTo) window._ganttTo = '';
 
-  // Full date range from activities
-  const allStarts = activities.map(a => new Date(a.start).getTime());
-  const allFinishes = activities.map(a => new Date(a.finish).getTime());
+  // Full date range from activities (only those with dates)
+  const datedActs = activities.filter(a => a.start || a.finish);
+  const allStarts = datedActs.map(a => new Date(a.start || a.finish).getTime()).filter(t => !isNaN(t));
+  const allFinishes = datedActs.map(a => new Date(a.finish || a.start).getTime()).filter(t => !isNaN(t));
+  if (!allStarts.length) { return '<div class="empty-state"><h3>No dated activities</h3><p>Add start/finish dates to see Gantt chart.</p></div>'; }
   const fullStart = addDays(new Date(Math.min(...allStarts)), -7);
   const fullEnd = addDays(new Date(Math.max(...allFinishes)), 14);
 
@@ -215,8 +217,10 @@ function renderGantt() {
   const timelineW = totalDays * pxDay;
 
   // Filter activities to date range
+  // Only show activities with actual dates on Gantt
   const rangeActivities = activities.filter(a => {
-    const s = new Date(a.start), f = new Date(a.finish);
+    if (!a.start && !a.finish) return false; // no dates = skip on Gantt
+    const s = new Date(a.start || a.finish), f = new Date(a.finish || a.start);
     return f >= projStart && s <= projEnd;
   });
 

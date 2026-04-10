@@ -21,12 +21,12 @@ function clearFilters(sec) {
 const TODAY = new Date(); // Fix #4: use real current date
 TODAY.setHours(0, 0, 0, 0);
 const DAY_MS = 86400000;
-const fmt = d => { const dd = new Date(d); return dd.toLocaleDateString('en-US', {month:'short', day:'numeric'}); };
-const fmtFull = d => { const dd = new Date(d); return dd.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}); };
+const fmt = d => { if (!d) return '\u2014'; const dd = new Date(d); return isNaN(dd) ? '\u2014' : dd.toLocaleDateString('en-US', {month:'short', day:'numeric'}); };
+const fmtFull = d => { if (!d) return '\u2014'; const dd = new Date(d); return isNaN(dd) ? '\u2014' : dd.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}); };
 const addDays = (d, n) => new Date(new Date(d).getTime() + n * DAY_MS);
 const diffDays = (a, b) => Math.round((new Date(b) - new Date(a)) / DAY_MS);
-const isoDate = d => new Date(d).toISOString().slice(0,10);
-const isOverdue = a => a.status !== 'Complete' && new Date(a.finish) < TODAY;
+const isoDate = d => { if (!d) return ''; const dd = new Date(d); return isNaN(dd) ? '' : dd.toISOString().slice(0,10); };
+const isOverdue = a => a.status !== 'Complete' && a.finish && new Date(a.finish) < TODAY;
 const isThisWeek = d => { const s = addDays(TODAY, -TODAY.getDay()); const e = addDays(s,6); return new Date(d) >= s && new Date(d) <= e; };
 const isInRange = (d, days) => { const dt = new Date(d); return dt >= TODAY && dt <= addDays(TODAY, days); };
 
