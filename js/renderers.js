@@ -400,16 +400,24 @@ function renderGantt() {
     html += `</div>`;
   }
 
+  // Safe date getters — handle null finish by using start + duration
+  const gStart = a => a.start ? new Date(a.start) : (a.finish ? new Date(a.finish) : TODAY);
+  const gFinish = a => {
+    if (a.finish && new Date(a.finish) >= new Date(a.start || 0)) return new Date(a.finish);
+    if (a.start) return addDays(new Date(a.start), Math.max(1, a.duration || 1));
+    return addDays(TODAY, 1);
+  };
+
   // Bars grouped by trade
   trades.forEach(trade => {
     const color = TRADE_COLORS[trade] || '#94a3b8';
     const items = grouped[trade];
 
     // Trade phase bar (wide spanning bar)
-    const tradeStart = Math.min(...items.map(a => new Date(a.start).getTime()));
-    const tradeEnd = Math.max(...items.map(a => new Date(a.finish).getTime()));
+    const tradeStart = Math.min(...items.map(a => gStart(a).getTime()));
+    const tradeEnd = Math.max(...items.map(a => gFinish(a).getTime()));
     const tLeft = Math.max(0, diffDays(projStart, new Date(tradeStart))) * pxDay;
-    const tWidth = diffDays(new Date(tradeStart), new Date(tradeEnd)) * pxDay;
+    const tWidth = Math.max(20, diffDays(new Date(tradeStart), new Date(tradeEnd)) * pxDay);
     html += `<div style="height:28px;position:relative;">
       <div style="position:absolute;left:${tLeft}px;width:${Math.max(20,tWidth)}px;height:20px;top:4px;background:${color};opacity:.15;border-radius:4px;"></div>
       <div style="position:absolute;left:${tLeft+4}px;top:7px;font-size:9px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.5px;">${esc(trade)}</div>
@@ -418,14 +426,16 @@ function renderGantt() {
     // Activity bars
     html += `<div class="gantt-trade-bars">`;
     items.forEach(a => {
-      const aLeft = Math.max(0, diffDays(projStart, a.start)) * pxDay;
-      const aWidth = Math.max(4, diffDays(a.start, a.finish) * pxDay);
+      const aS = gStart(a);
+      const aF = gFinish(a);
+      const aLeft = Math.max(0, diffDays(projStart, aS)) * pxDay;
+      const aWidth = Math.max(4, diffDays(aS, aF) * pxDay);
       const isCrit = criticalIds.has(a.id);
       const op = a.status === 'Complete' ? '.35' : '1';
 
       html += `<div style="height:26px;position:relative;" data-id="${esc(a.id)}" class="gantt-bar-row">`;
       // Bar
-      html += `<div class="gantt-bar-v2" data-actid="${esc(a.id)}" style="position:absolute;left:${aLeft}px;width:${aWidth}px;height:18px;top:4px;background:${color};border-radius:4px;opacity:${op};cursor:pointer;${isCrit?'box-shadow:0 0 0 1.5px var(--red);':''}" title="${esc(a.name)} (${fmt(a.start)} \u2013 ${fmt(a.finish)}) ${a.pct}%">
+      html += `<div class="gantt-bar-v2" data-actid="${esc(a.id)}" style="position:absolute;left:${aLeft}px;width:${aWidth}px;height:18px;top:4px;background:${color};border-radius:4px;opacity:${op};cursor:pointer;${isCrit?'box-shadow:0 0 0 1.5px var(--red);':''}" title="${esc(a.name)} (${fmt(aS)} \u2013 ${fmt(aF)}) ${a.pct}%">
         <div style="width:${a.pct}%;height:100%;background:rgba(0,0,0,.15);border-radius:inherit;pointer-events:none;"></div>
         ${aWidth > 60 ? `<span style="position:absolute;left:6px;top:0;height:100%;display:flex;align-items:center;font-size:9px;font-weight:600;color:#fff;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.3);pointer-events:none;">${esc(a.name.length > Math.floor(aWidth/6) ? a.name.slice(0,Math.floor(aWidth/6))+'...' : a.name)}</span>` : ''}
         <div class="gantt-resize-handle left" data-edge="left"></div>
