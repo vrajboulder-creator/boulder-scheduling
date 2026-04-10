@@ -69,11 +69,20 @@ const Projects = {
 // ─── ACTIVITIES ───
 const Activities = {
   async getAll(projectId) {
-    let query = requireDb().from('activities').select('*').order('start_date');
-    if (projectId) query = query.eq('project_id', projectId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data;
+    // Supabase default limit is 1000. Use range to get all.
+    let allData = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      let query = requireDb().from('activities').select('*').order('start_date').range(from, from + pageSize - 1);
+      if (projectId) query = query.eq('project_id', projectId);
+      const { data, error } = await query;
+      if (error) throw error;
+      allData = allData.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return allData;
   },
 
   async getById(id) {

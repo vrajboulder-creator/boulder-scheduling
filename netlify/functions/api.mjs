@@ -151,11 +151,19 @@ export async function handler(event) {
       if (segments.length === 1 && method === 'GET') {
         const params = new URLSearchParams(event.rawQuery || '');
         const projectId = params.get('project_id');
-        let query = supabase.from('activities').select('*').order('start_date');
-        if (projectId) query = query.eq('project_id', projectId);
-        const { data, error } = await query;
-        if (error) return err(error.message, 500);
-        return json(data);
+        // Paginate to get all (Supabase default 1000 limit)
+        let allData = [];
+        let from = 0;
+        while (true) {
+          let query = supabase.from('activities').select('*').order('start_date').range(from, from + 999);
+          if (projectId) query = query.eq('project_id', projectId);
+          const { data, error } = await query;
+          if (error) return err(error.message, 500);
+          allData = allData.concat(data);
+          if (data.length < 1000) break;
+          from += 1000;
+        }
+        return json(allData);
       }
 
       // Create activity
