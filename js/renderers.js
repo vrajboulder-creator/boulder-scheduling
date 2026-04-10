@@ -14,18 +14,30 @@ function renderFilterBar(section) {
   const sec = section || ('sec-' + (_filterBarCounter++));
   const st = _getState(sec);
   const mode = st.mode;
+
+  // Dynamic filter options from actual activity data
+  const dynTrades = [...new Set(activities.map(a => a.trade).filter(Boolean))].sort();
+  const dynAreas = [...new Set(activities.map(a => a.area).filter(Boolean))].sort();
+  const dynPhases = [...new Set(activities.map(a => a.phase).filter(Boolean))].sort();
+  const dynStatuses = [...new Set(activities.map(a => a.status).filter(Boolean))].sort();
+  const dynFloors = [...new Set(activities.map(a => a.floor).filter(Boolean))].sort();
+
   return `<div class="filter-bar" data-section="${esc(sec)}">
     <select class="filter-trade" onchange="setFilter('${esc(sec)}','trade',this.value)">
-      <option value="">All Trades</option>${TRADES.map(t => `<option ${st.trade===t?'selected':''}>${esc(t)}</option>`).join('')}
+      <option value="">All Trades (${dynTrades.length})</option>${dynTrades.map(t => `<option ${st.trade===t?'selected':''}>${esc(t)}</option>`).join('')}
     </select>
     <select class="filter-area" onchange="setFilter('${esc(sec)}','area',this.value)">
-      <option value="">All Areas</option>
-      <option ${st.area==='Tower A'?'selected':''}>Tower A</option><option ${st.area==='Tower B'?'selected':''}>Tower B</option><option ${st.area==='Lobby / Front Desk'?'selected':''}>Lobby / Front Desk</option><option ${st.area==='Back of House'?'selected':''}>Back of House</option><option ${st.area==='Amenity Area'?'selected':''}>Amenity Area</option><option ${st.area==='Exterior / Site'?'selected':''}>Exterior / Site</option><option ${st.area==='Parking'?'selected':''}>Parking</option><option ${st.area==='Pool Deck'?'selected':''}>Pool Deck</option><option ${st.area==='Breakfast Area'?'selected':''}>Breakfast Area</option>
+      <option value="">All Areas (${dynAreas.length})</option>${dynAreas.map(a => `<option ${st.area===a?'selected':''}>${esc(a)}</option>`).join('')}
     </select>
     <select class="filter-status" onchange="setFilter('${esc(sec)}','status',this.value)">
-      <option value="">All Statuses</option>
-      <option ${st.status==='Not Started'?'selected':''}>Not Started</option><option ${st.status==='In Progress'?'selected':''}>In Progress</option><option ${st.status==='Complete'?'selected':''}>Complete</option><option ${st.status==='Delayed'?'selected':''}>Delayed</option><option ${st.status==='Blocked'?'selected':''}>Blocked</option><option ${st.status==='Ready to Start'?'selected':''}>Ready to Start</option>
+      <option value="">All Statuses</option>${dynStatuses.map(s => `<option ${st.status===s?'selected':''}>${esc(s)}</option>`).join('')}
     </select>
+    ${dynPhases.length > 1 ? `<select onchange="setFilter('${esc(sec)}','phase',this.value)">
+      <option value="">All Phases</option>${dynPhases.map(p => `<option ${st.phase===p?'selected':''}>${esc(p)}</option>`).join('')}
+    </select>` : ''}
+    ${dynFloors.length > 1 ? `<select onchange="setFilter('${esc(sec)}','floor',this.value)">
+      <option value="">All Floors</option>${dynFloors.map(f => `<option ${st.floor===f?'selected':''}>${esc(f)}</option>`).join('')}
+    </select>` : ''}
     <div class="view-tabs" style="margin-left:auto;">
       <button class="view-tab ${mode==='list'?'active':''}" onclick="setViewMode('${esc(sec)}','list')">&#9776; List</button>
       <button class="view-tab ${mode==='grid'?'active':''}" onclick="setViewMode('${esc(sec)}','grid')">&#9638; Grid</button>

@@ -3,14 +3,14 @@ let _sectionState = {};
 let searchQuery = '';
 
 function _getState(sec) {
-  if (!_sectionState[sec]) _sectionState[sec] = { mode: 'list', trade: '', area: '', status: '' };
+  if (!_sectionState[sec]) _sectionState[sec] = { mode: 'list', trade: '', area: '', status: '', phase: '', floor: '' };
   return _sectionState[sec];
 }
 function getViewMode(sec) { return _getState(sec).mode; }
 function setViewMode(sec, mode) { _getState(sec).mode = mode; render(); }
 function setFilter(sec, key, val) { _getState(sec)[key] = val; render(); }
 function clearFilters(sec) {
-  _sectionState[sec] = { mode: _getState(sec).mode, trade: '', area: '', status: '' };
+  _sectionState[sec] = { mode: _getState(sec).mode, trade: '', area: '', status: '', phase: '', floor: '' };
   searchQuery = '';
   const s = document.getElementById('globalSearch');
   if (s) s.value = '';
@@ -58,14 +58,16 @@ function getKPIs() {
 
 // ─── FILTER HELPERS (section-aware) ───
 function applyFilters(items, section) {
-  const st = section ? _getState(section) : { trade: '', area: '', status: '' };
+  const st = section ? _getState(section) : { trade: '', area: '', status: '', phase: '', floor: '' };
   return items.filter(a => {
     if (st.trade && a.trade !== st.trade) return false;
     if (st.area && a.area !== st.area) return false;
     if (st.status && a.status !== st.status) return false;
+    if (st.phase && a.phase !== st.phase) return false;
+    if (st.floor && a.floor !== st.floor) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return a.name.toLowerCase().includes(q) || a.trade.toLowerCase().includes(q) || a.sub.toLowerCase().includes(q) || a.area.toLowerCase().includes(q) || a.id.toLowerCase().includes(q);
+      return a.name.toLowerCase().includes(q) || a.trade.toLowerCase().includes(q) || (a.sub||'').toLowerCase().includes(q) || a.area.toLowerCase().includes(q) || a.id.toLowerCase().includes(q) || (a.phase||'').toLowerCase().includes(q) || (a.notes||'').toLowerCase().includes(q);
     }
     return true;
   });

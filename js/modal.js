@@ -6,6 +6,17 @@ function openModal() {
   document.getElementById('fPct').value = '0';
   document.getElementById('fStart').value = isoDate(TODAY);
   document.getElementById('fFinish').value = isoDate(addDays(TODAY, 14));
+
+  // Populate dynamic dropdowns from current activities
+  const populateSelect = (id, vals, placeholder) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = `<option value="">${placeholder}</option>` + vals.map(v => `<option>${v}</option>`).join('');
+  };
+  populateSelect('fTrade', [...new Set(activities.map(a=>a.trade).filter(Boolean))].sort(), '-- Select Trade --');
+  populateSelect('fArea', [...new Set(activities.map(a=>a.area).filter(Boolean))].sort(), '-- Select Area --');
+  populateSelect('fFloor', ['', ...new Set(activities.map(a=>a.floor).filter(Boolean))].filter(Boolean).sort(), '-- Select Floor --');
+  populateSelect('fPhase', [...new Set(activities.map(a=>a.phase).filter(Boolean))].sort(), '-- Select Phase --');
 }
 
 function closeModal() {

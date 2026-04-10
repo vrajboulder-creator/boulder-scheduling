@@ -60,12 +60,12 @@ function openDetail(id) {
     <div class="detail-section">
       <div class="detail-section-title">Location &amp; Trade</div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">Trade</div><select class="form-select" onchange="updateField('${_id}','trade',this.value)" style="font-size:12px;">${TRADES.map(t => `<option ${a.trade===t?'selected':''}>${t}</option>`).join('')}</select></div>
+        <div class="detail-field"><div class="detail-label">Trade</div><select class="form-select" onchange="updateField('${_id}','trade',this.value)" style="font-size:12px;">${[...new Set(activities.map(x=>x.trade).filter(Boolean))].sort().map(t => `<option ${a.trade===t?'selected':''}>${esc(t)}</option>`).join('')}</select></div>
         <div class="detail-field"><div class="detail-label">Subcontractor</div><input class="form-input" value="${esc(a.sub)}" onchange="updateField('${_id}','sub',this.value)" style="font-size:12px;"></div>
       </div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">Area</div><select class="form-select" onchange="updateField('${_id}','area',this.value)" style="font-size:12px;">${['Tower A','Tower B','Lobby / Front Desk','Back of House','Amenity Area','Exterior / Site','Parking','Pool Deck','Breakfast Area'].map(o => `<option ${a.area===o?'selected':''}>${o}</option>`).join('')}</select></div>
-        <div class="detail-field"><div class="detail-label">Floor</div><select class="form-select" onchange="updateField('${_id}','floor',this.value)" style="font-size:12px;">${['','Level 1','Level 2','Level 3','Level 4','Level 5','Roof','Site'].map(o => `<option ${a.floor===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="detail-field"><div class="detail-label">Area</div><select class="form-select" onchange="updateField('${_id}','area',this.value)" style="font-size:12px;">${[...new Set(activities.map(x=>x.area).filter(Boolean))].sort().map(o => `<option ${a.area===o?'selected':''}>${esc(o)}</option>`).join('')}</select></div>
+        <div class="detail-field"><div class="detail-label">Floor</div><select class="form-select" onchange="updateField('${_id}','floor',this.value)" style="font-size:12px;">${['', ...new Set(activities.map(x=>x.floor).filter(Boolean))].map(o => `<option ${a.floor===o?'selected':''}>${esc(o) || '(none)'}</option>`).join('')}</select></div>
       </div>
       <div class="detail-row" style="margin-top:6px;">
         <div class="detail-field"><div class="detail-label">Milestone</div><select class="form-select" onchange="updateField('${_id}','milestone',this.value==='Yes')" style="font-size:12px;"><option ${a.milestone?'selected':''}>Yes</option><option ${!a.milestone?'selected':''}>No</option></select></div>
