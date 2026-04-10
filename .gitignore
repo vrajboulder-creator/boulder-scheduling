@@ -1,5 +1,13 @@
 node_modules/
 .env
-data/
+.env*.local
+/data/
 server.log
 *.log
+
+# next.js
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
