@@ -166,9 +166,8 @@ function render() {
   area.innerHTML = html;
   attachListeners();
 
-  // Gantt: scroll zoom + sync + arrows
+  // Gantt: interactions + D3 draw
   if (currentView === 'gantt') {
-    requestAnimationFrame(drawGanttArrows);
     initGanttInteractions();
   }
 }
@@ -218,23 +217,22 @@ function initGanttInteractions() {
       if (ganttSidebarOn) openDetail(el.dataset.id);
     });
   });
-  // Bar clicks handled by initBarDrag (single click = open detail, drag = move)
 
-  // Drag-to-resize bar edges + drag-to-move whole bar
-  initBarResize();
-  initBarDrag();
+  // Draw D3 SVG timeline
+  drawGanttD3();
 
-  // Drag to pan timeline
+  // Drag to pan timeline (background pan)
   initDragScroll(timeline);
 
   // Scroll to today on first load
   if (!window._ganttScrolled) {
     window._ganttScrolled = true;
     const pxDay = window._ganttPxPerDay || 18;
-    const projStartEl = timeline.querySelector('[style*="width"]');
-    if (projStartEl) {
-      // Approximate scroll to today
-      timeline.scrollLeft = Math.max(0, (diffDays(new Date(2026,0,1), TODAY)) * pxDay - 200);
+    const datedActs = activities.filter(a => a.start || a.finish);
+    if (datedActs.length) {
+      const allStarts = datedActs.map(a => (parseDate(a.start || a.finish) || new Date(0)).getTime()).filter(t => t > 0);
+      const projStart = window._ganttFrom ? parseDate(window._ganttFrom) : addDays(new Date(Math.min(...allStarts)), -7);
+      timeline.scrollLeft = Math.max(0, diffDays(projStart, TODAY) * pxDay - 200);
     }
   }
 
@@ -300,12 +298,11 @@ function initBarResize() {
 
         if (edge === 'right') {
           // Keep start, change finish
-          a.finish = addDays(new Date(a.start), newDurationDays);
+          a.finish = isoDate(addDays(a.start, newDurationDays));
           a.duration = newDurationDays;
         } else {
           // Keep finish, change start
-          const oldFinish = new Date(a.finish);
-          a.start = addDays(oldFinish, -newDurationDays);
+          a.start = isoDate(addDays(a.finish, -newDurationDays));
           a.duration = newDurationDays;
         }
 
@@ -449,8 +446,8 @@ function initBarDrag() {
         }
 
         if (daysDelta !== 0) {
-          a.start = addDays(new Date(a.start), daysDelta);
-          a.finish = addDays(new Date(a.finish), daysDelta);
+          a.start = isoDate(addDays(a.start, daysDelta));
+          a.finish = isoDate(addDays(a.finish, daysDelta));
         }
 
         const scrollPos = timeline ? timeline.scrollLeft : 0;
@@ -505,7 +502,7 @@ function initDragScroll(el) {
   el.style.cursor = 'grab';
 
   el.addEventListener('mousedown', e => {
-    if (e.target.closest('button, a, input, select, .gantt-bar-v2, .gantt-resize-handle')) return;
+    if (e.target.closest('button, a, input, select, .gantt-bar-v2, .gantt-resize-handle, .g3-bar, .g3-bar-rect, .g3-bar-row, .g3-handle')) return;
     isDown = true;
     el.style.cursor = 'grabbing';
     startX = e.pageX - el.offsetLeft;
@@ -748,9 +745,26 @@ function bootApp() {
   // Load from Supabase API, then render
   apiLoadAll().then(loaded => {
     if (loaded) {
-      console.log(`Loaded ${activities.length} activities from Supabase`);
+      // Check if loaded data has usable dates (at least 20% with start or finish)
+      const datedCount = activities.filter(a => a.start || a.finish).length;
+      const usable = datedCount >= Math.max(5, activities.length * 0.2);
+      if (usable) {
+        console.log(`Loaded ${activities.length} activities from Supabase (${datedCount} dated)`);
+      } else {
+        console.warn(`DB has ${activities.length} activities but only ${datedCount} have dates — using project data`);
+        if (currentProject === 'tpsj') {
+          loadTPSJActivities();
+        } else {
+          loadFallbackActivities();
+        }
+      }
     } else {
-      console.warn('No activities loaded from API — database may be empty');
+      console.warn('No activities from API — loading project data');
+      if (currentProject === 'tpsj') {
+        loadTPSJActivities();
+      } else {
+        loadFallbackActivities();
+      }
     }
     updateProjectDropdown();
     render();

@@ -153,7 +153,7 @@ function renderDashboard(k) {
 
 function renderToday() {
   const todayItems = activities.filter(a => {
-    const s = new Date(a.start), f = new Date(a.finish);
+    const s = parseDate(a.start), f = parseDate(a.finish);
     return s <= TODAY && f >= TODAY && a.status !== 'Complete';
   }).sort((a,b) => a.priority === 'Critical' ? -1 : 1);
   let html = `<div class="section-header"><div class="section-title">Today &mdash; ${fmtFull(TODAY)}</div><div class="section-count">${todayItems.length} active</div></div>`;
@@ -164,7 +164,7 @@ function renderToday() {
 
 function renderThisWeek() {
   const items = activities.filter(a => {
-    const s = new Date(a.start), f = new Date(a.finish);
+    const s = parseDate(a.start), f = parseDate(a.finish);
     const weekStart = addDays(TODAY, -TODAY.getDay());
     const weekEnd = addDays(weekStart, 6);
     return ((s <= weekEnd && f >= weekStart) || isThisWeek(a.start) || isThisWeek(a.finish)) && a.status !== 'Complete';
@@ -204,23 +204,20 @@ function renderGantt() {
 
   // Full date range from activities (only those with dates)
   const datedActs = activities.filter(a => a.start || a.finish);
-  const allStarts = datedActs.map(a => new Date(a.start || a.finish).getTime()).filter(t => !isNaN(t));
-  const allFinishes = datedActs.map(a => new Date(a.finish || a.start).getTime()).filter(t => !isNaN(t));
+  const allStarts = datedActs.map(a => (parseDate(a.start || a.finish) || new Date(0)).getTime()).filter(t => t > 0);
+  const allFinishes = datedActs.map(a => (parseDate(a.finish || a.start) || new Date(0)).getTime()).filter(t => t > 0);
   if (!allStarts.length) { return '<div class="empty-state"><h3>No dated activities</h3><p>Add start/finish dates to see Gantt chart.</p></div>'; }
   const fullStart = addDays(new Date(Math.min(...allStarts)), -7);
   const fullEnd = addDays(new Date(Math.max(...allFinishes)), 14);
 
-  // Apply date filter if set
-  const projStart = window._ganttFrom ? new Date(window._ganttFrom) : fullStart;
-  const projEnd = window._ganttTo ? new Date(window._ganttTo) : fullEnd;
-  const totalDays = Math.max(7, diffDays(projStart, projEnd));
-  const timelineW = totalDays * pxDay;
-
+  // Apply date filter if set — use parseDate to avoid UTC timezone shift
+  const projStart = window._ganttFrom ? parseDate(window._ganttFrom) : fullStart;
+  const projEnd = window._ganttTo ? parseDate(window._ganttTo) : fullEnd;
   // Filter activities to date range
   // Only show activities with actual dates on Gantt
   const rangeActivities = activities.filter(a => {
     if (!a.start && !a.finish) return false; // no dates = skip on Gantt
-    const s = new Date(a.start || a.finish), f = new Date(a.finish || a.start);
+    const s = parseDate(a.start || a.finish), f = parseDate(a.finish || a.start);
     return f >= projStart && s <= projEnd;
   });
 
@@ -232,17 +229,6 @@ function renderGantt() {
   });
   const trades = Object.keys(grouped);
   const criticalIds = new Set(activities.filter(a => a.priority === 'Critical' && a.status !== 'Complete').map(a => a.id));
-
-  // Build week markers
-  const weeks = [];
-  let wd = new Date(projStart);
-  wd.setDate(wd.getDate() - wd.getDay());
-  while (wd <= projEnd) { weeks.push(new Date(wd)); wd = addDays(wd, 7); }
-
-  // Build month markers
-  const months = [];
-  let md = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
-  while (md <= projEnd) { months.push(new Date(md)); md = new Date(md.getFullYear(), md.getMonth() + 1, 1); }
 
   const leftW = 320;
   const weekColW = 7 * pxDay;
@@ -334,133 +320,31 @@ function renderGantt() {
     html += `<div class="gantt-trade-group">`;
     items.forEach(a => {
       const isCrit = criticalIds.has(a.id);
+      // Derive display dates — same logic as _gS/_gF in gantt-d3.js
+      const dur = Math.max(1, a.duration || 1);
+      const ds = parseDate(a.start), df = parseDate(a.finish);
+      const dispStart  = ds || (df ? addDays(df, -dur) : null);
+      const dispFinish = df || (ds ? addDays(ds,  dur) : null);
       html += `<div class="gantt-left-row${isCrit ? ' gantt-critical' : ''}" data-id="${esc(a.id)}" style="display:flex;align-items:center;height:26px;border-bottom:1px solid var(--border-light);cursor:pointer;font-size:11px;">
         <div style="flex:1;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
           ${a.milestone ? '<span style="color:'+color+';margin-right:3px;">&#9670;</span>' : ''}
           ${esc(a.name)}
           ${isCrit ? '<span style="font-size:8px;color:var(--red);font-weight:700;margin-left:3px;">CRIT</span>' : ''}
         </div>
-        <div style="width:75px;padding:0 6px;font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);">${fmt(a.start)}</div>
-        <div style="width:75px;padding:0 6px;font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);">${fmt(a.finish)}</div>
+        <div style="width:75px;padding:0 6px;font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);">${fmt(dispStart)}</div>
+        <div style="width:75px;padding:0 6px;font-size:10px;color:var(--text-tertiary);font-family:var(--font-mono);">${fmt(dispFinish)}</div>
       </div>`;
     });
     html += `</div>`;
   });
   html += `</div>`;
 
-  // ─── RIGHT PANEL (timeline) ───
-  html += `<div class="gantt-timeline" id="ganttTimeline" style="flex:1;overflow-x:auto;overflow-y:hidden;position:relative;">`;
-  html += `<div style="width:${timelineW}px;min-width:${timelineW}px;">`;
-
-  // Month header — clamp to visible date range
-  html += `<div style="height:24px;position:relative;border-bottom:1px solid var(--border);background:var(--bg-input);">`;
-  months.forEach(m => {
-    const mStart = new Date(Math.max(m.getTime(), projStart.getTime()));
-    const mEndDate = new Date(m.getFullYear(), m.getMonth() + 1, 0);
-    const mEnd = new Date(Math.min(mEndDate.getTime(), projEnd.getTime()));
-    if (mEnd < mStart) return; // month not in visible range
-    const mLeft = diffDays(projStart, mStart) * pxDay;
-    const mWidth = Math.max(2, diffDays(mStart, mEnd) * pxDay);
-    const mLabel = mWidth > 140 ? m.toLocaleDateString('en-US',{month:'long',year:'numeric'})
-      : mWidth > 80 ? m.toLocaleDateString('en-US',{month:'short',year:'numeric'})
-      : mWidth > 40 ? m.toLocaleDateString('en-US',{month:'short'})
-      : '';
-    html += `<div style="position:absolute;left:${mLeft}px;width:${mWidth}px;height:24px;display:flex;align-items:center;padding:0 6px;font-size:11px;font-weight:700;color:var(--text-primary);border-right:1px solid var(--border);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${mLabel}</div>`;
-  });
-  html += `</div>`;
-
-  // Week sub-header (only when columns wide enough)
-  if (weekColW >= 55) {
-    html += `<div style="height:20px;position:relative;border-bottom:1px solid var(--border);background:var(--bg-input);">`;
-    weeks.forEach(w => {
-      const wLeft = Math.max(0, diffDays(projStart, w)) * pxDay;
-      const isCur = diffDays(w, TODAY) >= 0 && diffDays(w, TODAY) < 7;
-      const wLabel = weekColW > 100 ? 'Wk ' + fmt(w) : fmt(w);
-      html += `<div style="position:absolute;left:${wLeft}px;width:${weekColW}px;height:20px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;color:${isCur?'var(--accent)':'#aaa'};border-right:1px solid var(--border-light);${isCur?'background:var(--accent-light);':''}overflow:hidden;text-overflow:ellipsis;">${wLabel}</div>`;
-    });
-    html += `</div>`;
-  }
-
-  // Day grid lines + weekend shading (when zoomed enough)
-  if (pxDay >= 14) {
-    html += `<div style="position:absolute;top:0;bottom:0;left:0;width:${timelineW}px;pointer-events:none;z-index:0;">`;
-    for (let d = 0; d < totalDays; d++) {
-      const dayDate = addDays(projStart, d);
-      const dow = dayDate.getDay();
-      const isWeekend = dow === 0 || dow === 6;
-      const x = d * pxDay;
-      if (isWeekend) {
-        html += `<div style="position:absolute;left:${x}px;top:0;bottom:0;width:${pxDay}px;background:rgba(0,0,0,.025);"></div>`;
-      }
-      // Week start line
-      if (dow === 1) {
-        html += `<div style="position:absolute;left:${x}px;top:0;bottom:0;width:1px;background:var(--border-light);"></div>`;
-      }
-    }
-    html += `</div>`;
-  }
-
-  // Safe date getters — handle null finish by using start + duration
-  const gStart = a => a.start ? new Date(a.start) : (a.finish ? new Date(a.finish) : TODAY);
-  const gFinish = a => {
-    if (a.finish && new Date(a.finish) >= new Date(a.start || 0)) return new Date(a.finish);
-    if (a.start) return addDays(new Date(a.start), Math.max(1, a.duration || 1));
-    return addDays(TODAY, 1);
-  };
-
-  // Bars grouped by trade
-  trades.forEach(trade => {
-    const color = TRADE_COLORS[trade] || '#94a3b8';
-    const items = grouped[trade];
-
-    // Trade phase bar (wide spanning bar)
-    const tradeStart = Math.min(...items.map(a => gStart(a).getTime()));
-    const tradeEnd = Math.max(...items.map(a => gFinish(a).getTime()));
-    const tLeft = Math.max(0, diffDays(projStart, new Date(tradeStart))) * pxDay;
-    const tWidth = Math.max(20, diffDays(new Date(tradeStart), new Date(tradeEnd)) * pxDay);
-    html += `<div style="height:28px;position:relative;">
-      <div style="position:absolute;left:${tLeft}px;width:${Math.max(20,tWidth)}px;height:20px;top:4px;background:${color};opacity:.15;border-radius:4px;"></div>
-      <div style="position:absolute;left:${tLeft+4}px;top:7px;font-size:9px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.5px;">${esc(trade)}</div>
-    </div>`;
-
-    // Activity bars
-    html += `<div class="gantt-trade-bars">`;
-    items.forEach(a => {
-      const aS = gStart(a);
-      const aF = gFinish(a);
-      const aLeft = Math.max(0, diffDays(projStart, aS)) * pxDay;
-      const aWidth = Math.max(4, diffDays(aS, aF) * pxDay);
-      const isCrit = criticalIds.has(a.id);
-      const op = a.status === 'Complete' ? '.35' : '1';
-
-      html += `<div style="height:26px;position:relative;" data-id="${esc(a.id)}" class="gantt-bar-row">`;
-      // Bar
-      html += `<div class="gantt-bar-v2" data-actid="${esc(a.id)}" style="position:absolute;left:${aLeft}px;width:${aWidth}px;height:18px;top:4px;background:${color};border-radius:4px;opacity:${op};cursor:pointer;${isCrit?'box-shadow:0 0 0 1.5px var(--red);':''}" title="${esc(a.name)} (${fmt(aS)} \u2013 ${fmt(aF)}) ${a.pct}%">
-        <div style="width:${a.pct}%;height:100%;background:rgba(0,0,0,.15);border-radius:inherit;pointer-events:none;"></div>
-        ${aWidth > 60 ? `<span style="position:absolute;left:6px;top:0;height:100%;display:flex;align-items:center;font-size:9px;font-weight:600;color:#fff;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.3);pointer-events:none;">${esc(a.name.length > Math.floor(aWidth/6) ? a.name.slice(0,Math.floor(aWidth/6))+'...' : a.name)}</span>` : ''}
-        <div class="gantt-resize-handle left" data-edge="left"></div>
-        <div class="gantt-resize-handle right" data-edge="right"></div>
-      </div>`;
-      // Milestone diamond
-      if (a.milestone) {
-        html += `<div style="position:absolute;left:${aLeft-5}px;top:2px;color:${color};font-size:16px;line-height:1;">&#9670;</div>`;
-      }
-      html += `</div>`;
-    });
-    html += `</div>`;
-  });
-
-  // Today line
-  const todayLeft = Math.max(0, diffDays(projStart, TODAY)) * pxDay;
-  html += `<div style="position:absolute;top:0;bottom:0;left:${todayLeft}px;width:2px;background:var(--accent);opacity:.6;z-index:10;pointer-events:none;"></div>`;
-  html += `<div style="position:absolute;top:2px;left:${todayLeft-16}px;font-size:8px;font-weight:700;color:var(--accent);background:#fff;padding:1px 4px;border-radius:3px;z-index:11;pointer-events:none;">TODAY</div>`;
-
-  // Dependency arrows
-  html += `<svg id="ganttArrows" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;"></svg>`;
-
-  html += `</div></div>`; // timeline inner + outer
+  // ─── RIGHT PANEL (D3 renders inside #ganttD3Wrap) ───
+  html += `<div class="gantt-timeline" id="ganttTimeline" style="flex:1;overflow-x:auto;overflow-y:auto;position:relative;">`;
+  html += `<div id="ganttD3Wrap" style="position:relative;display:inline-block;min-width:100%;"></div>`;
+  html += `</div>`; // gantt-timeline
   html += `</div>`; // gantt-container
-  html += `</div>`; // ganttOuter (fullscreen wrapper)
+  html += `</div>`; // ganttOuter
 
   return html;
 }
@@ -480,7 +364,8 @@ function renderCalendar() {
   // Build day → activities map
   const dayMap = {};
   activities.forEach(a => {
-    const s = new Date(a.start), f = new Date(a.finish);
+    const s = parseDate(a.start), f = parseDate(a.finish);
+    if (!s || !f) return;
     for (let d = new Date(Math.max(s, firstDay)); d <= Math.min(f, lastDay); d.setDate(d.getDate() + 1)) {
       const key = d.getDate();
       if (!dayMap[key]) dayMap[key] = [];

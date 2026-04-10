@@ -21,14 +21,25 @@ function clearFilters(sec) {
 const TODAY = new Date(); // Fix #4: use real current date
 TODAY.setHours(0, 0, 0, 0);
 const DAY_MS = 86400000;
-const fmt = d => { if (!d) return '\u2014'; const dd = new Date(d); return isNaN(dd) ? '\u2014' : dd.toLocaleDateString('en-US', {month:'short', day:'numeric'}); };
-const fmtFull = d => { if (!d) return '\u2014'; const dd = new Date(d); return isNaN(dd) ? '\u2014' : dd.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}); };
-const addDays = (d, n) => new Date(new Date(d).getTime() + n * DAY_MS);
-const diffDays = (a, b) => Math.round((new Date(b) - new Date(a)) / DAY_MS);
-const isoDate = d => { if (!d) return ''; const dd = new Date(d); return isNaN(dd) ? '' : dd.toISOString().slice(0,10); };
-const isOverdue = a => a.status !== 'Complete' && a.finish && new Date(a.finish) < TODAY;
-const isThisWeek = d => { const s = addDays(TODAY, -TODAY.getDay()); const e = addDays(s,6); return new Date(d) >= s && new Date(d) <= e; };
-const isInRange = (d, days) => { const dt = new Date(d); return dt >= TODAY && dt <= addDays(TODAY, days); };
+// Parse ISO date strings (YYYY-MM-DD) as local time to avoid UTC timezone shift
+const parseDate = d => {
+  if (!d) return null;
+  if (d instanceof Date) return d;
+  const s = String(d);
+  // ISO date-only "YYYY-MM-DD" — parse as local midnight to avoid UTC offset
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  const dd = new Date(d);
+  return isNaN(dd) ? null : dd;
+};
+const fmt = d => { if (!d) return '\u2014'; const dd = parseDate(d); return !dd ? '\u2014' : dd.toLocaleDateString('en-US', {month:'short', day:'numeric'}); };
+const fmtFull = d => { if (!d) return '\u2014'; const dd = parseDate(d); return !dd ? '\u2014' : dd.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}); };
+const addDays = (d, n) => new Date((parseDate(d) || TODAY).getTime() + n * DAY_MS);
+const diffDays = (a, b) => Math.round(((parseDate(b) || new Date(b)) - (parseDate(a) || new Date(a))) / DAY_MS);
+const isoDate = d => { if (!d) return ''; const dd = parseDate(d); return !dd ? '' : `${dd.getFullYear()}-${String(dd.getMonth()+1).padStart(2,'0')}-${String(dd.getDate()).padStart(2,'0')}`; };
+const isOverdue = a => a.status !== 'Complete' && a.finish && parseDate(a.finish) < TODAY;
+const isThisWeek = d => { const s = addDays(TODAY, -TODAY.getDay()); const e = addDays(s,6); const dt = parseDate(d); return dt >= s && dt <= e; };
+const isInRange = (d, days) => { const dt = parseDate(d); return dt >= TODAY && dt <= addDays(TODAY, days); };
 
 // ─── XSS SANITIZER (Fix #3) ───
 function esc(str) {
@@ -210,18 +221,25 @@ async function switchProjectFromSettings(key) {
       _currentProjectId = pData.id;
       const loaded = await apiLoadAll(pData.id);
       if (loaded) {
-        showToast(`${proj.name} \u2014 ${activities.length} activities`);
+        const datedCount = activities.filter(a => a.start || a.finish).length;
+        const usable = datedCount >= Math.max(5, activities.length * 0.2);
+        if (usable) {
+          showToast(`${proj.name} \u2014 ${activities.length} activities`);
+        } else {
+          if (key === 'tpsj') { loadTPSJActivities(); } else { loadFallbackActivities(); }
+          showToast(`${proj.name} \u2014 ${activities.length} activities`);
+        }
       } else {
-        // No activities for this project — show empty
-        activities.length = 0;
-        showToast(`${proj.name} \u2014 no activities yet`);
+        if (key === 'tpsj') { loadTPSJActivities(); } else { loadFallbackActivities(); }
+        showToast(`${proj.name} \u2014 ${activities.length} activities`);
       }
     } else {
-      activities.length = 0;
-      showToast(`${proj.name} \u2014 project not in database`);
+      if (key === 'tpsj') { loadTPSJActivities(); } else { loadFallbackActivities(); }
+      showToast(`${proj.name} \u2014 ${activities.length} activities`);
     }
   } catch (e) {
-    showToast('Load failed');
+    if (key === 'tpsj') { loadTPSJActivities(); } else { loadFallbackActivities(); }
+    showToast(`${proj.name} \u2014 ${activities.length} activities`);
   }
   if (typeof updateProjectDropdown === 'function') updateProjectDropdown();
   render();

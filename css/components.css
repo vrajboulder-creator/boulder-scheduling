@@ -778,6 +778,29 @@
 .gantt-bar-v2:hover { filter: brightness(1.1); box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .gantt-bar-row:hover { background: rgba(0,0,0,.02); }
 
+/* ── D3 Gantt ── */
+#ganttD3Wrap { position: relative; line-height: 1; }
+#ganttD3Wrap svg { display: block; }
+
+/* Bar hover brightness */
+.g3-bar:hover .g3-bar-rect { filter: brightness(1.12); }
+.g3-bar-rect { transition: filter .12s; }
+
+/* Row hover stripe */
+.g3-bar-row:hover .g3-row-hover { fill: rgba(0,0,0,0.025); }
+
+/* Show handles when hovering the bar group */
+.g3-bar:hover .g3-handle { opacity: 0.7 !important; }
+
+/* Cursor on handles */
+.g3-handle-left,
+.g3-handle-right { cursor: ew-resize; }
+
+/* Timeline scrollbar */
+#ganttTimeline::-webkit-scrollbar        { display: block; height: 6px; width: 6px; }
+#ganttTimeline::-webkit-scrollbar-track  { background: var(--border-light); border-radius: 100px; }
+#ganttTimeline::-webkit-scrollbar-thumb  { background: var(--accent); border-radius: 100px; }
+
 /* === SETTINGS === */
 .settings-card {
   background: var(--bg-card);

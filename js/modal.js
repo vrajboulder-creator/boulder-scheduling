@@ -29,7 +29,7 @@ function saveActivity() {
   const trade = document.getElementById('fTrade').value;
   const startVal = document.getElementById('fStart').value || isoDate(TODAY);
   const finishVal = document.getElementById('fFinish').value || isoDate(addDays(TODAY, 14));
-  if (new Date(finishVal) < new Date(startVal)) { showToast('Finish date must be after start date'); return; }
+  if (parseDate(finishVal) < parseDate(startVal)) { showToast('Finish date must be after start date'); return; }
   const a = {
     id: genId(),
     name,
@@ -38,8 +38,8 @@ function saveActivity() {
     area: document.getElementById('fArea').value || 'Tower A',
     floor: document.getElementById('fFloor').value || '',
     phase: document.getElementById('fPhase').value || '',
-    start: new Date(startVal),
-    finish: new Date(finishVal),
+    start: startVal,
+    finish: finishVal,
     duration: diffDays(startVal, finishVal),
     status: document.getElementById('fStatus').value || 'Not Started',
     pct: parseInt(document.getElementById('fPct').value) || 0,

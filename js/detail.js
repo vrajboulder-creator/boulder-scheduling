@@ -48,8 +48,8 @@ function openDetail(id) {
     <div class="detail-section">
       <div class="detail-section-title">Schedule</div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">Start Date</div><input class="form-input" type="date" value="${isoDate(a.start)}" onchange="updateField('${_id}','start',new Date(this.value));updateField('${_id}','duration',Math.max(1,diffDays(new Date(this.value),new Date(activities.find(x=>x.id==='${_id}').finish))))" style="font-size:12px;"></div>
-        <div class="detail-field"><div class="detail-label">Finish Date</div><input class="form-input" type="date" value="${isoDate(a.finish)}" onchange="updateField('${_id}','finish',new Date(this.value));updateField('${_id}','duration',Math.max(1,diffDays(new Date(activities.find(x=>x.id==='${_id}').start),new Date(this.value))))" style="font-size:12px;"></div>
+        <div class="detail-field"><div class="detail-label">Start Date</div><input class="form-input" type="date" value="${isoDate(a.start)}" onchange="updateField('${_id}','start',this.value);updateField('${_id}','duration',Math.max(1,diffDays(this.value,activities.find(x=>x.id==='${_id}').finish)))" style="font-size:12px;"></div>
+        <div class="detail-field"><div class="detail-label">Finish Date</div><input class="form-input" type="date" value="${isoDate(a.finish)}" onchange="updateField('${_id}','finish',this.value);updateField('${_id}','duration',Math.max(1,diffDays(activities.find(x=>x.id==='${_id}').start,this.value)))" style="font-size:12px;"></div>
       </div>
       <div class="detail-row">
         <div class="detail-field"><div class="detail-label">Duration</div><div class="detail-value">${parseInt(a.duration)} days</div></div>
