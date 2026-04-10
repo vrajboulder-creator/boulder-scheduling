@@ -2,6 +2,8 @@
 
 import { useAppStore } from '@/hooks/useAppStore';
 import { getWeatherDesc } from '@/lib/helpers';
+import { Card } from '@/components/ui/card';
+import { Wind, Droplets, AlertTriangle } from 'lucide-react';
 
 export default function WeatherCard() {
   const { projects, currentProject } = useAppStore();
@@ -10,37 +12,36 @@ export default function WeatherCard() {
 
   if (!wd) {
     return (
-      <div className="weather-alert" style={{ padding: '10px 16px' }}>
-        <div style={{ fontSize: 12 }}>{proj?.weather || '⛅ Loading weather...'}</div>
-      </div>
+      <Card className="px-4 py-2.5 mb-4">
+        <p className="text-xs text-muted-foreground">{proj?.weather || '⛅ Loading weather...'}</p>
+      </Card>
     );
   }
 
-  const hasAlert = wd.alerts && wd.alerts.length > 0;
-
   return (
-    <div className="weather-alert" style={{ padding: '10px 16px', gap: 10, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
-      <strong style={{ fontSize: 15, color: '#1a1d23', whiteSpace: 'nowrap' }}>
-        {wd.temp}°F
-      </strong>
-      <span style={{ fontSize: 11.5, color: '#666' }}>{wd.desc}</span>
-      <span style={{ fontSize: 10.5, color: '#999' }}>
-        💨 {wd.wind}mph · 💧 {wd.humidity}%
+    <Card className="flex items-center gap-3 px-4 py-2.5 mb-4 flex-wrap">
+      <span className="text-2xl">{getWeatherDesc(wd.code).icon}</span>
+      <strong className="text-[15px] text-foreground whitespace-nowrap">{wd.temp}°F</strong>
+      <span className="text-[11.5px] text-muted-foreground">{wd.desc}</span>
+      <span className="flex items-center gap-2 text-[10.5px] text-muted-foreground">
+        <Wind className="h-3 w-3" /> {wd.wind}mph
+        <Droplets className="h-3 w-3 ml-1" /> {wd.humidity}%
       </span>
-      {hasAlert && (
-        <span style={{ fontSize: 10, fontWeight: 600, color: '#fff', background: 'var(--red)', padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+      {wd.alerts.length > 0 && (
+        <span className="flex items-center gap-1 text-[10px] font-semibold text-white bg-destructive px-2 py-0.5 rounded-full whitespace-nowrap">
+          <AlertTriangle className="h-3 w-3" />
           {wd.alerts.join(', ')}
         </span>
       )}
-      <div style={{ display: 'flex', gap: 10, marginLeft: 'auto' }}>
+      <div className="flex gap-3 ml-auto">
         {wd.forecast?.map((f, i) => (
-          <div key={i} style={{ textAlign: 'center', lineHeight: 1.3 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: '#555' }}>{f.day}</div>
-            <div style={{ margin: '2px 0', fontSize: 14 }}>{getWeatherDesc(f.code).icon}</div>
-            <div style={{ fontSize: 10, fontWeight: 600 }}>{f.hi}°/{f.lo}°</div>
+          <div key={i} className="text-center leading-tight">
+            <div className="text-[10px] font-semibold text-muted-foreground">{f.day}</div>
+            <div className="text-sm my-0.5">{getWeatherDesc(f.code).icon}</div>
+            <div className="text-[10px] font-semibold">{f.hi}°/{f.lo}°</div>
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import type { Activity, ViewType, ProjectConfig, WeatherDetail, ActivityDB, LinkedItemRef } from '@/types';
 import { isoDate, addDays, TODAY } from '@/lib/helpers';
 import { SUBS } from '@/data/constants';
@@ -159,8 +160,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toastMessage: '',
   showToast: (msg) => {
+    toast(msg);
     set({ toastMessage: msg });
-    setTimeout(() => set({ toastMessage: '' }), 2500);
   },
 }));
 

@@ -6,7 +6,7 @@ import Header from '@/components/layout/Header';
 import ViewSwitcher from '@/components/views/ViewSwitcher';
 import DetailPanel from '@/components/detail/DetailPanel';
 import ActivityModal from '@/components/modal/ActivityModal';
-import Toast from '@/components/ui/Toast';
+import ToastProvider from '@/components/ui/Toast';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi } from '@/hooks/useApi';
 import { getWeatherDesc } from '@/lib/helpers';
@@ -107,7 +107,7 @@ export default function HomePage() {
         </div>
       </div>
       <ActivityModal />
-      <Toast />
+      <ToastProvider />
     </div>
   );
 }

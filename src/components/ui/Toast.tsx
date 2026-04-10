@@ -1,12 +1,7 @@
 'use client';
 
-import { useAppStore } from '@/hooks/useAppStore';
+import { Toaster } from 'sonner';
 
-export default function Toast() {
-  const { toastMessage } = useAppStore();
-  return (
-    <div className={`toast${toastMessage ? ' show' : ''}`} id="toast">
-      {toastMessage}
-    </div>
-  );
+export default function ToastProvider() {
+  return <Toaster position="bottom-center" richColors closeButton />;
 }

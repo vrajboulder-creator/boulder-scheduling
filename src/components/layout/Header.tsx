@@ -2,6 +2,10 @@
 
 import { useAppStore } from '@/hooks/useAppStore';
 import { fmtFull, TODAY } from '@/lib/helpers';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { SelectNative } from '@/components/ui/select-native';
+import { Plus, Menu, Mic, CloudSun } from 'lucide-react';
 
 export default function Header() {
   const { projects, currentProject, setCurrentProject, searchQuery, setSearchQuery, setModalOpen } = useAppStore();
@@ -9,60 +13,68 @@ export default function Header() {
   const proj = projects[currentProject];
 
   return (
-    <header className="header">
-      <button
-        className="btn-menu"
-        id="btnMenu"
-        title="Menu"
+    <header className="h-[52px] bg-card border-b border-border flex items-center px-6 gap-3.5 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+      {/* Mobile menu */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="hidden max-md:flex"
         onClick={() => {
-          document.getElementById('sidebar')?.classList.toggle('open');
-          document.getElementById('sidebarOverlay')?.classList.toggle('open');
+          document.getElementById('sidebar')?.classList.toggle('translate-x-0');
+          document.getElementById('sidebar')?.classList.toggle('-translate-x-full');
         }}
       >
-        &#9776;
-      </button>
-      <div className="header-project">
-        <select
-          id="projectSelect"
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      {/* Project selector */}
+      <div className="w-auto min-w-[180px]">
+        <SelectNative
           value={currentProject}
           onChange={(e) => setCurrentProject(e.target.value)}
+          className="font-semibold text-[13px]"
         >
           {projectKeys.map((key) => (
-            <option key={key} value={key}>
-              {projects[key].name}
-            </option>
+            <option key={key} value={key}>{projects[key].name}</option>
           ))}
-        </select>
+        </SelectNative>
       </div>
-      <div className="header-search">
-        <input
+
+      {/* Search */}
+      <div className="relative flex-1 max-w-[360px]">
+        <Input
           type="text"
           placeholder="Search activities, trades, areas…"
-          id="globalSearch"
-          autoComplete="off"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 pr-9 text-[13px]"
         />
-        <button className="voice-btn" id="voiceSearchBtn" title="Voice search">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+        </svg>
+        <button className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+          <Mic className="h-3.5 w-3.5" />
         </button>
-        <div className="search-results-dropdown" id="searchDropdown" />
       </div>
-      <div className="header-right">
-        <span className="header-weather" id="headerWeather" title="Weather advisory">
-          {proj?.weather || 'Loading weather...'}
-        </span>
-        <span className="header-date" id="headerDate">
+
+      {/* Right section */}
+      <div className="ml-auto flex items-center gap-2.5">
+        {/* Weather pill */}
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 px-3 py-1 rounded-full shadow-sm whitespace-nowrap">
+          <CloudSun className="h-3.5 w-3.5" />
+          <span>{proj?.weather || 'Loading…'}</span>
+        </div>
+
+        {/* Date */}
+        <span className="text-xs text-muted-foreground font-medium hidden sm:block">
           {fmtFull(TODAY)}
         </span>
-        <button className="btn-primary" onClick={() => setModalOpen(true)}>
-          + Activity
-        </button>
+
+        {/* Add Activity */}
+        <Button size="sm" onClick={() => setModalOpen(true)} className="gap-1">
+          <Plus className="h-3.5 w-3.5" />
+          Activity
+        </Button>
       </div>
     </header>
   );

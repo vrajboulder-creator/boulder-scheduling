@@ -1,16 +1,17 @@
 'use client';
 
+import { Badge } from '@/components/ui/badge';
 import type { ActivityStatus } from '@/types';
 
-const statusClasses: Record<ActivityStatus, string> = {
-  'In Progress': 'in-progress',
-  'Complete': 'complete',
-  'Delayed': 'delayed',
-  'Blocked': 'blocked',
-  'Ready to Start': 'ready',
-  'Not Started': 'not-started',
+const statusVariant: Record<ActivityStatus, 'success' | 'info' | 'warning' | 'danger' | 'secondary'> = {
+  'Complete': 'success',
+  'In Progress': 'info',
+  'Delayed': 'warning',
+  'Blocked': 'danger',
+  'Ready to Start': 'success',
+  'Not Started': 'secondary',
 };
 
 export default function StatusBadge({ status }: { status: ActivityStatus }) {
-  return <span className={`status ${statusClasses[status] || 'not-started'}`}>{status}</span>;
+  return <Badge variant={statusVariant[status] || 'secondary'}>{status}</Badge>;
 }
