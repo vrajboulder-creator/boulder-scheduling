@@ -8,45 +8,52 @@ function openDetail(id) {
   document.getElementById('detailTitle').textContent = a.name;
   const inner = document.getElementById('detailInner');
 
+  const _id = esc(a.id);
+  const _st = (v, opts) => opts.map(o => `<option ${a[v]===o?'selected':''}>${o}</option>`).join('');
+
   let html = `
     <div class="detail-progress-update">
       <span style="font-size:12px;font-weight:500;">Progress</span>
-      <input type="range" class="progress-slider" min="0" max="100" value="${parseInt(a.pct)}" oninput="document.getElementById('progressVal').textContent=this.value+'%'" onchange="quickUpdate('${esc(a.id)}','pct',parseInt(this.value))">
+      <input type="range" class="progress-slider" min="0" max="100" value="${parseInt(a.pct)}" oninput="document.getElementById('progressVal').textContent=this.value+'%'" onchange="quickUpdate('${_id}','pct',parseInt(this.value))">
       <span class="progress-val" id="progressVal">${parseInt(a.pct)}%</span>
     </div>
     <div class="detail-section">
       <div class="detail-section-title">Activity Summary</div>
-      <div class="detail-field"><div class="detail-label">Activity Name</div><div class="detail-value">${esc(a.name)}</div></div>
+      <div class="detail-field"><div class="detail-label">Activity Name</div><input class="form-input" value="${esc(a.name)}" onchange="updateField('${_id}','name',this.value)" style="font-size:13px;font-weight:600;"></div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">ID</div><div class="detail-value" style="font-family:var(--font-mono);font-size:12px;">${esc(a.id)}</div></div>
-        <div class="detail-field"><div class="detail-label">Status</div><div class="detail-value">${renderStatusBadge(a)}</div></div>
+        <div class="detail-field"><div class="detail-label">ID</div><div class="detail-value" style="font-family:var(--font-mono);font-size:12px;">${_id}</div></div>
+        <div class="detail-field"><div class="detail-label">Status</div><select class="form-select" onchange="quickUpdate('${_id}','status',this.value)" style="font-size:12px;">${_st('status',['Not Started','In Progress','Complete','Delayed','Blocked','Ready to Start'])}</select></div>
       </div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">Priority</div><div class="detail-value"><span class="priority-dot ${esc(a.priority).toLowerCase()}"></span>${esc(a.priority)}</div></div>
-        <div class="detail-field"><div class="detail-label">Phase</div><div class="detail-value">${esc(a.phase)}</div></div>
+        <div class="detail-field"><div class="detail-label">Priority</div><select class="form-select" onchange="updateField('${_id}','priority',this.value)" style="font-size:12px;">${_st('priority',['Critical','High','Normal','Low'])}</select></div>
+        <div class="detail-field"><div class="detail-label">Phase</div><select class="form-select" onchange="updateField('${_id}','phase',this.value)" style="font-size:12px;">${['Sitework','Foundation','Structure','Rough-In','Close-In','Finishes','Punch / Closeout','Turnover'].map(o => `<option ${a.phase===o?'selected':''}>${o}</option>`).join('')}</select></div>
       </div>
     </div>
     <div class="detail-section">
       <div class="detail-section-title">Schedule</div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">Start Date</div><div class="detail-value">${fmtFull(a.start)}</div></div>
-        <div class="detail-field"><div class="detail-label">Finish Date</div><div class="detail-value">${fmtFull(a.finish)}</div></div>
+        <div class="detail-field"><div class="detail-label">Start Date</div><input class="form-input" type="date" value="${isoDate(a.start)}" onchange="updateField('${_id}','start',new Date(this.value));updateField('${_id}','duration',Math.max(1,diffDays(new Date(this.value),new Date(activities.find(x=>x.id==='${_id}').finish))))" style="font-size:12px;"></div>
+        <div class="detail-field"><div class="detail-label">Finish Date</div><input class="form-input" type="date" value="${isoDate(a.finish)}" onchange="updateField('${_id}','finish',new Date(this.value));updateField('${_id}','duration',Math.max(1,diffDays(new Date(activities.find(x=>x.id==='${_id}').start),new Date(this.value))))" style="font-size:12px;"></div>
       </div>
       <div class="detail-row">
         <div class="detail-field"><div class="detail-label">Duration</div><div class="detail-value">${parseInt(a.duration)} days</div></div>
-        <div class="detail-field"><div class="detail-label">% Complete</div><div class="detail-value">${parseInt(a.pct)}%</div></div>
+        <div class="detail-field"><div class="detail-label">% Complete</div><input class="form-input" type="number" min="0" max="100" value="${parseInt(a.pct)}" onchange="quickUpdate('${_id}','pct',parseInt(this.value))" style="font-size:12px;width:70px;"></div>
       </div>
       ${isOverdue(a) ? `<div style="color:var(--red);font-size:12px;font-weight:600;margin-top:4px;">&#9888; Overdue by ${diffDays(a.finish, TODAY)} days</div>` : ''}
     </div>
     <div class="detail-section">
       <div class="detail-section-title">Location &amp; Trade</div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">Trade</div><div class="detail-value">${esc(a.trade)}</div></div>
-        <div class="detail-field"><div class="detail-label">Subcontractor</div><div class="detail-value">${esc(a.sub)}</div></div>
+        <div class="detail-field"><div class="detail-label">Trade</div><select class="form-select" onchange="updateField('${_id}','trade',this.value)" style="font-size:12px;">${TRADES.map(t => `<option ${a.trade===t?'selected':''}>${t}</option>`).join('')}</select></div>
+        <div class="detail-field"><div class="detail-label">Subcontractor</div><input class="form-input" value="${esc(a.sub)}" onchange="updateField('${_id}','sub',this.value)" style="font-size:12px;"></div>
       </div>
       <div class="detail-row">
-        <div class="detail-field"><div class="detail-label">Area</div><div class="detail-value">${esc(a.area)}</div></div>
-        <div class="detail-field"><div class="detail-label">Floor</div><div class="detail-value">${esc(a.floor)}</div></div>
+        <div class="detail-field"><div class="detail-label">Area</div><select class="form-select" onchange="updateField('${_id}','area',this.value)" style="font-size:12px;">${['Tower A','Tower B','Lobby / Front Desk','Back of House','Amenity Area','Exterior / Site','Parking','Pool Deck','Breakfast Area'].map(o => `<option ${a.area===o?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="detail-field"><div class="detail-label">Floor</div><select class="form-select" onchange="updateField('${_id}','floor',this.value)" style="font-size:12px;">${['','Level 1','Level 2','Level 3','Level 4','Level 5','Roof','Site'].map(o => `<option ${a.floor===o?'selected':''}>${o}</option>`).join('')}</select></div>
+      </div>
+      <div class="detail-row" style="margin-top:6px;">
+        <div class="detail-field"><div class="detail-label">Milestone</div><select class="form-select" onchange="updateField('${_id}','milestone',this.value==='Yes')" style="font-size:12px;"><option ${a.milestone?'selected':''}>Yes</option><option ${!a.milestone?'selected':''}>No</option></select></div>
+        <div class="detail-field"><div class="detail-label">Lookahead</div><select class="form-select" onchange="updateField('${_id}','lookahead',this.value==='Yes')" style="font-size:12px;"><option ${a.lookahead?'selected':''}>Yes</option><option ${!a.lookahead?'selected':''}>No</option></select></div>
       </div>
     </div>
     ${a.blocker ? `<div class="detail-section"><div class="detail-section-title">Constraint / Blocker</div><div class="detail-field"><div class="detail-value"><span class="blocker-tag">${esc(a.blocker)}</span></div></div></div>` : ''}
@@ -126,6 +133,19 @@ function openDetail(id) {
   inner.querySelectorAll('.detail-linked-item[data-id]').forEach(el => {
     el.addEventListener('click', () => openDetail(el.dataset.id));
   });
+}
+
+// ─── UPDATE ANY FIELD (generic inline edit) ───
+function updateField(id, field, value) {
+  const a = activities.find(x => x.id === id);
+  if (!a) return;
+  a[field] = value;
+  // Update title if name changed
+  if (field === 'name') {
+    const titleEl = document.getElementById('detailTitle');
+    if (titleEl) titleEl.textContent = value;
+  }
+  debouncedSave(id);
 }
 
 function closeDetail() {

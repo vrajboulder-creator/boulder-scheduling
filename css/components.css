@@ -733,6 +733,20 @@
   max-height: calc(100vh - 120px);
 }
 
+/* Gantt timeline horizontal scrollbar — visible orange */
+.gantt-timeline {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) transparent;
+}
+.gantt-timeline::-webkit-scrollbar { display: block; height: 6px; }
+.gantt-timeline::-webkit-scrollbar-track { background: var(--border-light); border-radius: 100px; }
+.gantt-timeline::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 100px; }
+.gantt-timeline::-webkit-scrollbar-thumb:hover { background: var(--accent-hover); }
+
+/* Gantt bar cursor */
+.gantt-bar-v2 { cursor: grab; }
+.gantt-bar-v2:active { cursor: grabbing; }
+
 /* Gantt bar resize handles — real DOM elements */
 .gantt-bar-v2 { position: relative; }
 .gantt-resize-handle {

@@ -211,26 +211,17 @@ function initGanttInteractions() {
     });
   }
 
-  // Click bar rows / bars to open detail (only if sidebar toggle ON)
-  document.querySelectorAll('.gantt-bar-row[data-id], .gantt-left-row[data-id]').forEach(el => {
-    el.addEventListener('click', e => {
-      if (!ganttSidebarOn) return;
-      if (e.target.closest('.gantt-resize-handle')) return;
-      openDetail(el.dataset.id);
+  // Click left panel rows to open detail
+  document.querySelectorAll('.gantt-left-row[data-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      if (ganttSidebarOn) openDetail(el.dataset.id);
     });
   });
+  // Bar clicks handled by initBarDrag (single click = open detail, drag = move)
 
-  document.querySelectorAll('.gantt-bar-v2').forEach(bar => {
-    bar.addEventListener('click', e => {
-      if (!ganttSidebarOn) return;
-      if (e.target.closest('.gantt-resize-handle')) return;
-      const row = bar.closest('.gantt-bar-row[data-id]');
-      if (row) openDetail(row.dataset.id);
-    });
-  });
-
-  // Drag-to-resize bars (change duration + recalculate dates)
+  // Drag-to-resize bar edges + drag-to-move whole bar
   initBarResize();
+  initBarDrag();
 
   // Drag to pan timeline
   initDragScroll(timeline);
@@ -328,6 +319,78 @@ function initBarResize() {
         });
       };
 
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+}
+
+// ─── BAR DRAG-TO-MOVE (shift entire bar = move start+finish dates) ───
+function initBarDrag() {
+  const pxDay = window._ganttPxPerDay || 18;
+
+  document.querySelectorAll('.gantt-bar-v2').forEach(bar => {
+    bar.addEventListener('mousedown', e => {
+      // Skip if clicking resize handles
+      if (e.target.closest('.gantt-resize-handle')) return;
+
+      const actId = bar.dataset.actid;
+      if (!actId) return;
+
+      const startX = e.clientX;
+      const startLeft = bar.offsetLeft;
+      let dragged = false;
+
+      bar.style.transition = 'none';
+      bar.style.zIndex = '10';
+      bar.style.cursor = 'grabbing';
+      bar.style.opacity = '0.8';
+
+      const onMove = ev => {
+        const dx = ev.clientX - startX;
+        if (Math.abs(dx) < 4) return;
+        dragged = true;
+        bar.style.left = (startLeft + dx) + 'px';
+      };
+
+      const onUp = ev => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        bar.style.transition = '';
+        bar.style.zIndex = '';
+        bar.style.cursor = '';
+        bar.style.opacity = '';
+
+        if (!dragged) {
+          // Single click — open detail if sidebar on
+          if (ganttSidebarOn) openDetail(actId);
+          return;
+        }
+
+        const a = activities.find(x => x.id === actId);
+        if (!a) return;
+
+        const dx = ev.clientX - startX;
+        const daysDelta = Math.round(dx / pxDay);
+        if (daysDelta === 0) { render(); return; }
+
+        // Move both start and finish by same delta (keep duration)
+        a.start = addDays(new Date(a.start), daysDelta);
+        a.finish = addDays(new Date(a.finish), daysDelta);
+
+        const timeline = document.getElementById('ganttTimeline');
+        const scrollPos = timeline ? timeline.scrollLeft : 0;
+
+        showToast(`${a.id} moved: ${fmt(a.start)} \u2013 ${fmt(a.finish)}`);
+        debouncedSave(actId);
+        render();
+        requestAnimationFrame(() => {
+          const tl = document.getElementById('ganttTimeline');
+          if (tl) tl.scrollLeft = scrollPos;
+        });
+      };
+
+      e.preventDefault();
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
     });
