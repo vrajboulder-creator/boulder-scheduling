@@ -62,7 +62,7 @@ export default function FilteredView({ view }: { view: ViewType }) {
         <span className="text-[10.5px] text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full font-semibold">{filtered.length}</span>
       </div>
       <FilterBar section={view} activities={items} />
-      <ActivityTable items={filtered} />
+      <ActivityTable items={filtered} mode={st.mode} />
     </div>
   );
 }

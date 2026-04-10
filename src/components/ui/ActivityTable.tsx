@@ -7,8 +7,15 @@ import { cn } from '@/lib/utils';
 import StatusBadge from './StatusBadge';
 import PctBar from './PctBar';
 import { Badge } from './badge';
+import { Card } from './card';
+import { Calendar, Clock, MapPin } from 'lucide-react';
 
-export default function ActivityTable({ items }: { items: Activity[] }) {
+interface Props {
+  items: Activity[];
+  mode?: 'list' | 'grid';
+}
+
+export default function ActivityTable({ items, mode = 'list' }: Props) {
   const { setSelectedActivity } = useAppStore();
 
   if (!items.length) {
@@ -19,6 +26,84 @@ export default function ActivityTable({ items }: { items: Activity[] }) {
     );
   }
 
+  // ─── CARD / GRID VIEW ───
+  if (mode === 'grid') {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        {items.map((a) => {
+          const color = getTradeColor(a.trade);
+          return (
+            <Card
+              key={a.id}
+              onClick={() => setSelectedActivity(a.id)}
+              className={cn(
+                "p-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all border-l-[3px] relative overflow-hidden",
+                isOverdue(a) ? "border-l-red-500 bg-red-50/50" : ""
+              )}
+              style={{ borderLeftColor: isOverdue(a) ? undefined : color }}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-mono text-muted-foreground">{a.id}</p>
+                  <h4 className="text-[13px] font-semibold leading-tight truncate mt-0.5">
+                    {a.milestone && <span className="text-primary mr-1">◆</span>}
+                    {a.name}
+                  </h4>
+                </div>
+                <StatusBadge status={a.status} />
+              </div>
+
+              {/* Trade badge */}
+              <div className="flex items-center gap-1.5 mb-2">
+                <span
+                  className="inline-block w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-[11px] font-medium text-muted-foreground truncate">{a.trade}</span>
+                {a.sub && <span className="text-[10px] text-muted-foreground/70 truncate">· {a.sub}</span>}
+              </div>
+
+              {/* Dates */}
+              <div className="flex items-center gap-3 text-[10.5px] text-muted-foreground mb-2">
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {fmt(a.start)} – {fmt(a.finish)}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {a.duration}d
+                </span>
+              </div>
+
+              {/* Area */}
+              {a.area && (
+                <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-2">
+                  <MapPin className="h-3 w-3" />
+                  {a.area}{a.floor ? ` · ${a.floor}` : ''}
+                </div>
+              )}
+
+              {/* Progress bar */}
+              <PctBar pct={a.pct} />
+
+              {/* Blocker */}
+              {a.blocker && (
+                <Badge variant="danger" className="mt-2 text-[9px]">{a.blocker}</Badge>
+              )}
+
+              {/* Priority dot */}
+              <div className="absolute top-3 right-3">
+                <span className={cn("h-2 w-2 rounded-full block", `priority-${a.priority.toLowerCase()}`)} title={a.priority} />
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ─── TABLE / LIST VIEW ───
   return (
     <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
       <div className="overflow-x-auto">

@@ -22,7 +22,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     if (errs.length) return NextResponse.json({ error: errs.join(', ') }, { status: 400 });
     const data = await ActivitiesDB.update(id, body);
     return NextResponse.json(data);
-  } catch (err) {
+  } catch (err: unknown) {
+    console.error('PUT /api/activities/:id error:', err);
     return NextResponse.json({ error: safeError(err) }, { status: 400 });
   }
 }

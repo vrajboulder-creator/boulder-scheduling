@@ -82,9 +82,13 @@ export default function Sidebar() {
     <>
       <nav className="w-[232px] min-w-[232px] h-screen bg-card border-r border-border flex flex-col z-20 max-md:fixed max-md:left-0 max-md:top-0 max-md:bottom-0 max-md:-translate-x-full max-md:shadow-xl max-md:transition-transform max-md:z-50" id="sidebar">
         {/* Brand */}
-        <div className="px-5 py-4 border-b border-border text-center">
-          <h1 className="text-sm font-bold text-primary tracking-tight">Boulder Construction</h1>
-          <span className="text-[11px] text-muted-foreground font-medium">Schedule Command Center</span>
+        <div className="px-4 py-3 border-b border-border text-center">
+          <img
+            src="/assets/boulder-logo.png"
+            alt="Boulder Construction"
+            className="w-[160px] mx-auto mb-1"
+          />
+          <span className="text-[11px] text-muted-foreground font-medium block">Schedule Command Center</span>
         </div>
 
         {/* Nav */}

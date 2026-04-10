@@ -77,10 +77,13 @@ export function useApi() {
     try {
       const a = activities.find((x) => x.id === id);
       if (!a) return false;
-      const resp = await fetch(`${API_BASE}/${id}`, {
-        method: 'PUT',
+      // Use bulk upsert (insert-or-update) so fallback data that doesn't
+      // exist in DB yet gets created on first edit
+      const dbRow = frontendToDb(a);
+      const resp = await fetch(`${API_BASE}/bulk/save`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(frontendToDb(a)),
+        body: JSON.stringify([dbRow]),
       });
       if (!resp.ok) throw new Error(resp.statusText);
       return true;

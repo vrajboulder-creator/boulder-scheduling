@@ -97,11 +97,11 @@ export default function HomePage() {
   }
 
   return (
-    <div className="app">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <div className="main">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Header />
-        <div className="content">
+        <div className="flex-1 flex overflow-hidden">
           <ViewSwitcher />
           <DetailPanel />
         </div>

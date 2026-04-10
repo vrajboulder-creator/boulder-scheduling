@@ -19,7 +19,7 @@ export default function MasterView() {
         <span className="text-[10.5px] text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full font-semibold">{filtered.length} activities</span>
       </div>
       <FilterBar section="master" activities={activities} />
-      <ActivityTable items={filtered} />
+      <ActivityTable items={filtered} mode={st.mode} />
     </div>
   );
 }

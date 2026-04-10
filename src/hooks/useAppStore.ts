@@ -63,6 +63,8 @@ interface AppState {
   setGanttPxPerDay: (px: number) => void;
   ganttFullscreen: boolean;
   setGanttFullscreen: (fs: boolean) => void;
+  ganttSidebarOn: boolean;
+  setGanttSidebarOn: (on: boolean) => void;
 
   // Next ID
   nextId: number;
@@ -150,6 +152,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGanttPxPerDay: (px) => set({ ganttPxPerDay: Math.max(4, Math.min(50, px)) }),
   ganttFullscreen: false,
   setGanttFullscreen: (fs) => set({ ganttFullscreen: fs }),
+  ganttSidebarOn: true,
+  setGanttSidebarOn: (on) => set({ ganttSidebarOn: on }),
 
   nextId: 100,
   genId: () => {
@@ -194,18 +198,18 @@ export function dbToFrontend(row: ActivityDB & { _predecessors?: string[]; _succ
   };
 }
 
-export function frontendToDb(a: Activity): Partial<ActivityDB> {
+export function frontendToDb(a: Activity): Record<string, unknown> {
   return {
     id: a.id,
-    project_id: a.project_id || undefined,
+    project_id: a.project_id || null,
     name: a.name,
     trade: a.trade,
-    sub: a.sub,
+    sub: a.sub || '',
     area: a.area,
-    floor: a.floor,
-    phase: a.phase,
-    start_date: isoDate(a.start) || undefined,
-    finish_date: isoDate(a.finish) || undefined,
+    floor: a.floor || '',
+    phase: a.phase || '',
+    start_date: isoDate(a.start) || null,
+    finish_date: isoDate(a.finish) || null,
     duration: a.duration,
     status: a.status,
     pct: a.pct,
