@@ -1,12 +1,13 @@
 // ─── STATE ───
 let currentView = 'dashboard';
 let selectedActivity = null;
-let currentProject = 'hampton-inn';
+let currentProject = 'tpsj';
 let ganttZoom = 'week'; // 'day', 'week', 'month'
 let ganttSidebarOn = true; // toggle detail panel on bar click
 
 // ─── PROJECT DATA with coordinates for weather ───
 const PROJECTS = {
+  'tpsj': { name: 'TownePlace Suites \u2013 TPSJ', lat: 30.08, lon: -94.10, weather: 'Loading weather...', weatherLoaded: false },
   'hampton-inn': { name: 'Hampton Inn \u2013 Beaumont, TX', lat: 30.08, lon: -94.10, weather: 'Loading weather...', weatherLoaded: false },
   'fairfield-inn': { name: 'Fairfield Inn \u2013 Midland, TX', lat: 31.99, lon: -102.08, weather: 'Loading weather...', weatherLoaded: false },
   'holiday-inn': { name: 'Holiday Inn Express \u2013 Tyler, TX', lat: 32.35, lon: -95.30, weather: 'Loading weather...', weatherLoaded: false }
