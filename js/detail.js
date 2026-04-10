@@ -5,6 +5,22 @@ function openDetail(id) {
   selectedActivity = a;
   const panel = document.getElementById('detailPanel');
   panel.classList.remove('closed');
+  // If gantt fullscreen, make detail panel float on top
+  if (window._ganttFullscreen) {
+    panel.style.zIndex = '1100';
+    panel.style.position = 'fixed';
+    panel.style.right = '0';
+    panel.style.top = '0';
+    panel.style.bottom = '0';
+    panel.style.boxShadow = '-4px 0 24px rgba(0,0,0,.15)';
+  } else {
+    panel.style.zIndex = '';
+    panel.style.position = '';
+    panel.style.right = '';
+    panel.style.top = '';
+    panel.style.bottom = '';
+    panel.style.boxShadow = '';
+  }
   document.getElementById('detailTitle').textContent = a.name;
   const inner = document.getElementById('detailInner');
 
