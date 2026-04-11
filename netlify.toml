@@ -1,0 +1,29 @@
+# Netlify build config for Next.js 15 App Router.
+# The OpenNext Netlify runtime (auto-detected, no plugin needed on current
+# Netlify) handles `next build` output, API routes, and middleware.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  # Pin Node to an LTS Next.js 15 supports. 20 is the current Netlify default
+  # but lock it so future default changes don't break the build.
+  NODE_VERSION = "20"
+  # Silence Next telemetry in CI.
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Security headers — tightened defaults. Adjust if you embed the app in an
+# iframe or load third-party scripts beyond Open-Meteo + Supabase.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+# Note on environment variables:
+#   SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_ANON_KEY must be set in the
+#   Netlify dashboard under Site settings → Environment variables. Do NOT
+#   prefix with NEXT_PUBLIC_ — these are server-only and used by API routes.
