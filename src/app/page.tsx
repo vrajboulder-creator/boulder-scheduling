@@ -10,44 +10,78 @@ import ToastProvider from '@/components/ui/Toast';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi } from '@/hooks/useApi';
 import { getWeatherDesc } from '@/lib/helpers';
-import type { WeatherDetail, ForecastDay } from '@/types';
+import type { WeatherDetail, ForecastDay, Project, ProjectConfig } from '@/types';
+
+// Lat/lon by project code — for Open-Meteo weather. Not stored in DB.
+const PROJECT_COORDS: Record<string, { lat: number; lon: number }> = {
+  tpsj: { lat: 30.08, lon: -94.10 },
+  'hampton-inn': { lat: 30.08, lon: -94.10 },
+  'fairfield-inn': { lat: 31.99, lon: -102.08 },
+  'holiday-inn': { lat: 32.35, lon: -95.30 },
+};
 
 export default function HomePage() {
-  const { currentProject, projects, setActivities, updateProjectWeather, showToast, setCurrentProjectId } = useAppStore();
+  const { currentProject, projects, setActivities, setProjects, setCurrentProject, updateProjectWeather, showToast } = useAppStore();
   const { loadAll } = useApi();
 
-  // Boot: load data from API
+  // Boot: load projects, then activities for the selected project
   useEffect(() => {
     async function boot() {
-      const loaded = await loadAll();
+      // 1. Load projects from DB
+      try {
+        const resp = await fetch('/api/projects');
+        if (!resp.ok) throw new Error(resp.statusText);
+        const rows: Project[] = await resp.json();
+        const byCode: Record<string, ProjectConfig> = {};
+        rows.forEach((p) => {
+          const coords = PROJECT_COORDS[p.code] || { lat: 30.08, lon: -94.10 };
+          byCode[p.code] = {
+            id: p.id,
+            code: p.code,
+            name: p.name,
+            lat: coords.lat,
+            lon: coords.lon,
+            weather: 'Loading weather...',
+            weatherLoaded: false,
+          };
+        });
+        setProjects(byCode);
+        const firstCode = rows.find((p) => p.code === 'tpsj')?.code || rows[0]?.code;
+        if (firstCode) setCurrentProject(firstCode);
+      } catch (e) {
+        console.warn('Project load failed:', (e as Error).message);
+        showToast('Failed to load projects from database');
+        return;
+      }
+
+      // 2. Load activities for the selected project
+      const projectId = useAppStore.getState().currentProjectId;
+      const loaded = await loadAll(projectId);
       if (loaded) {
         const acts = useAppStore.getState().activities;
         const datedCount = acts.filter((a) => a.start || a.finish).length;
-        const usable = datedCount >= Math.max(5, acts.length * 0.2);
-        if (usable) {
-          console.log(`Loaded ${acts.length} activities from Supabase (${datedCount} dated)`);
-        } else {
-          console.warn('DB data insufficient — load fallback data from data module');
-          loadFallbackTPSJ();
-        }
+        console.log(`Loaded ${acts.length} activities from Supabase (${datedCount} dated)`);
       } else {
-        console.warn('No activities from API — loading fallback');
-        loadFallbackTPSJ();
+        console.warn('No activities returned for project', projectId);
+        setActivities([]);
       }
     }
     boot();
-    fetchWeather(currentProject);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function loadFallbackTPSJ() {
-    // Dynamic import of TPSJ data
-    import('@/data/tpsj').then((mod) => {
-      setActivities(mod.TPSJ_ACTIVITIES);
-    }).catch(() => {
-      showToast('Failed to load fallback data');
-    });
-  }
+  // Refetch activities + weather whenever the selected project changes
+  useEffect(() => {
+    if (!currentProject) return;
+    const projectId = useAppStore.getState().currentProjectId;
+    if (projectId) {
+      loadAll(projectId).then((ok) => {
+        if (!ok) setActivities([]);
+      });
+    }
+    fetchWeather(currentProject);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject]);
 
   async function fetchWeather(projectKey: string) {
     const proj = projects[projectKey];
@@ -92,7 +126,7 @@ export default function HomePage() {
       const detail: WeatherDetail = { temp, wind, humidity, desc: weatherDesc.text, icon: weatherDesc.icon, code: cur.weather_code, alerts, forecast };
       updateProjectWeather(projectKey, weatherStr, detail);
     } catch (e) {
-      updateProjectWeather(projectKey, '⛅ Weather unavailable');
+      updateProjectWeather(projectKey, 'Weather unavailable');
     }
   }
 

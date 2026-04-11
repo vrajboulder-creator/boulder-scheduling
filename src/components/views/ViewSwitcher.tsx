@@ -5,6 +5,7 @@ import DashboardView from './DashboardView';
 import MasterView from './MasterView';
 import FilteredView from './FilteredView';
 import GanttView from '@/components/gantt/GanttView';
+import CalendarView from './CalendarView';
 import WeatherCard from '@/components/ui/WeatherCard';
 
 export default function ViewSwitcher() {
@@ -15,7 +16,7 @@ export default function ViewSwitcher() {
       case 'dashboard': return <DashboardView />;
       case 'master': return <MasterView />;
       case 'gantt': return <GanttView />;
-      case 'calendar': return <Placeholder title="Calendar View" desc="Calendar view coming soon — use Gantt for timeline visualization." />;
+      case 'calendar': return <CalendarView />;
       case 'projects': return <Placeholder title="Projects" desc="Project management view — switch projects using the header dropdown." />;
       case 'settings': return <Placeholder title="Settings" desc="Settings view — configure weather, project, and display preferences." />;
       default: return <FilteredView view={currentView} />;

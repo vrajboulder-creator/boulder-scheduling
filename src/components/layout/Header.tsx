@@ -5,7 +5,8 @@ import { fmtFull, TODAY } from '@/lib/helpers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
-import { Plus, Menu, Mic, CloudSun } from 'lucide-react';
+import { WeatherIcon } from '@/components/ui/WeatherCard';
+import { Plus, Menu, Mic, CloudOff } from 'lucide-react';
 
 export default function Header() {
   const { projects, currentProject, setCurrentProject, searchQuery, setSearchQuery, setModalOpen } = useAppStore();
@@ -59,10 +60,18 @@ export default function Header() {
 
       {/* Right section */}
       <div className="ml-auto flex items-center gap-2.5">
-        {/* Weather pill */}
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-white bg-gradient-to-r from-amber-500 to-orange-600 px-3 py-1 rounded-full shadow-sm whitespace-nowrap">
-          <CloudSun className="h-3.5 w-3.5" />
-          <span>{proj?.weather || 'Loading…'}</span>
+        {/* Weather pill — dynamic icon pulled from current weather code */}
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold bg-gradient-to-r from-sky-50 via-white to-amber-50 text-slate-700 px-3 py-1 rounded-full shadow-sm ring-1 ring-slate-200 whitespace-nowrap">
+          {proj?.weatherDetail ? (
+            <WeatherIcon code={proj.weatherDetail.code} className="h-3.5 w-3.5" />
+          ) : (
+            <CloudOff className="h-3.5 w-3.5 text-slate-400" strokeWidth={1.75} />
+          )}
+          <span>
+            {proj?.weatherDetail
+              ? `${proj.weatherDetail.temp}°F · ${proj.weatherDetail.desc}`
+              : 'Loading…'}
+          </span>
         </div>
 
         {/* Date */}

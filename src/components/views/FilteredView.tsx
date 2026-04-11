@@ -1,7 +1,8 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
-import { applyFilters, isOverdue, isThisWeek, isInRange, isoDate, TODAY, parseDate, addDays, getKPIs } from '@/lib/helpers';
+import { applyFilters, isThisWeek, isInRange, isoDate, TODAY, parseDate, addDays, getKPIs } from '@/lib/helpers';
 import type { Activity, ViewType } from '@/types';
 import FilterBar from '@/components/ui/FilterBar';
 import ActivityTable from '@/components/ui/ActivityTable';
@@ -28,30 +29,40 @@ const VIEW_TITLES: Record<string, string> = {
 };
 
 export default function FilteredView({ view }: { view: ViewType }) {
-  const { activities, searchQuery, getSectionState } = useAppStore();
-  const st = getSectionState(view);
+  // Narrow selectors so row clicks (which flip `selectedActivityId`) don't
+  // re-run the entire view-filter over 1000+ activities.
+  const activities = useAppStore((s) => s.activities);
+  const searchQuery = useAppStore((s) => s.searchQuery);
+  const sectionState = useAppStore((s) => s.sectionState);
+  const st = sectionState[view] || { mode: 'list' as const, trade: '', area: '', status: '', phase: '', floor: '' };
   const title = VIEW_TITLES[view] || 'Activities';
 
-  let items: Activity[];
-  switch (view) {
-    case 'today': items = activities.filter(a => (isoDate(a.start) === isoDate(TODAY) || isoDate(a.finish) === isoDate(TODAY)) && a.status !== 'Complete'); break;
-    case 'this-week': items = activities.filter(a => isThisWeek(a.start) && a.status !== 'Complete'); break;
-    case 'delayed': items = activities.filter(a => a.status === 'Delayed'); break;
-    case 'blocked': items = activities.filter(a => a.status === 'Blocked' || a.blocker); break;
-    case 'in-progress': items = activities.filter(a => a.status === 'In Progress'); break;
-    case 'ready': items = activities.filter(a => a.status === 'Ready to Start' || (a.status === 'Not Started' && !a.blocker && parseDate(a.start)! <= addDays(TODAY, 7))); break;
-    case 'completed': items = activities.filter(a => a.status === 'Complete'); break;
-    case 'milestones': items = activities.filter(a => a.milestone); break;
-    case 'lookahead-6': items = activities.filter(a => isInRange(a.start, 42) || isInRange(a.finish, 42)); break;
-    case 'lookahead-3': items = activities.filter(a => isInRange(a.start, 21) || isInRange(a.finish, 21)); break;
-    case 'procurement': items = activities.filter(a => a.linked?.some(l => l.type === 'Procurement') && a.status !== 'Complete'); break;
-    case 'inspections': items = activities.filter(a => a.linked?.some(l => l.type === 'Inspection' || l.type === 'Permit') && a.status !== 'Complete'); break;
-    case 'punch': items = activities.filter(a => a.linked?.some(l => l.type === 'Punch') || a.phase === 'Punch / Closeout'); break;
-    case 'turnover': items = activities.filter(a => a.phase === 'Turnover'); break;
-    default: items = activities;
-  }
+  // View-specific slice of the full activity list. Memoized so it only
+  // rebuilds when `activities` (not selection, not store churn) changes.
+  const items = useMemo<Activity[]>(() => {
+    switch (view) {
+      case 'today': return activities.filter(a => (isoDate(a.start) === isoDate(TODAY) || isoDate(a.finish) === isoDate(TODAY)) && a.status !== 'Complete');
+      case 'this-week': return activities.filter(a => isThisWeek(a.start) && a.status !== 'Complete');
+      case 'delayed': return activities.filter(a => a.status === 'Delayed');
+      case 'blocked': return activities.filter(a => a.status === 'Blocked' || a.blocker);
+      case 'in-progress': return activities.filter(a => a.status === 'In Progress');
+      case 'ready': return activities.filter(a => a.status === 'Ready to Start' || (a.status === 'Not Started' && !a.blocker && parseDate(a.start)! <= addDays(TODAY, 7)));
+      case 'completed': return activities.filter(a => a.status === 'Complete');
+      case 'milestones': return activities.filter(a => a.milestone);
+      case 'lookahead-6': return activities.filter(a => isInRange(a.start, 42) || isInRange(a.finish, 42));
+      case 'lookahead-3': return activities.filter(a => isInRange(a.start, 21) || isInRange(a.finish, 21));
+      case 'procurement': return activities.filter(a => a.linked?.some(l => l.type === 'Procurement') && a.status !== 'Complete');
+      case 'inspections': return activities.filter(a => a.linked?.some(l => l.type === 'Inspection' || l.type === 'Permit') && a.status !== 'Complete');
+      case 'punch': return activities.filter(a => a.linked?.some(l => l.type === 'Punch') || a.phase === 'Punch / Closeout');
+      case 'turnover': return activities.filter(a => a.phase === 'Turnover');
+      default: return activities;
+    }
+  }, [activities, view]);
 
-  const filtered = applyFilters(items, st, searchQuery);
+  const filtered = useMemo(
+    () => applyFilters(items, st, searchQuery),
+    [items, st, searchQuery]
+  );
   const showKpis = ['today', 'this-week'].includes(view);
 
   return (

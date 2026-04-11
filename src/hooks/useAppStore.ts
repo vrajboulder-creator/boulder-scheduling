@@ -35,6 +35,7 @@ interface AppState {
 
   // Weather
   projects: Record<string, ProjectConfig>;
+  setProjects: (projects: Record<string, ProjectConfig>) => void;
   updateProjectWeather: (code: string, weather: string, detail?: WeatherDetail) => void;
 
   // Selection
@@ -91,19 +92,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({ activities: s.activities.filter((a) => a.id !== id) })),
 
   currentView: 'dashboard',
-  setView: (v) => set({ currentView: v, sectionState: {} }),
+  // Don't wipe sectionState — it's keyed per-view, so Delayed can stay in
+  // list mode while Today is in grid mode. Clearing it would make both
+  // sections snap back to default every time the user navigates away.
+  setView: (v) => set({ currentView: v }),
 
-  currentProject: 'tpsj',
-  setCurrentProject: (code) => set({ currentProject: code }),
+  currentProject: '',
+  setCurrentProject: (code) => {
+    const s = get();
+    const proj = s.projects[code];
+    set({ currentProject: code, currentProjectId: proj?.id ?? null });
+  },
   currentProjectId: null,
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
 
-  projects: {
-    tpsj: { name: 'TownePlace Suites – TPSJ', lat: 30.08, lon: -94.10, weather: 'Loading weather...', weatherLoaded: false },
-    'hampton-inn': { name: 'Hampton Inn – Beaumont, TX', lat: 30.08, lon: -94.10, weather: 'Loading weather...', weatherLoaded: false },
-    'fairfield-inn': { name: 'Fairfield Inn – Midland, TX', lat: 31.99, lon: -102.08, weather: 'Loading weather...', weatherLoaded: false },
-    'holiday-inn': { name: 'Holiday Inn Express – Tyler, TX', lat: 32.35, lon: -95.30, weather: 'Loading weather...', weatherLoaded: false },
-  },
+  projects: {},
+  setProjects: (projects) => set({ projects }),
   updateProjectWeather: (code, weather, detail) =>
     set((s) => ({
       projects: {
@@ -195,6 +199,7 @@ export function dbToFrontend(row: ActivityDB & { _predecessors?: string[]; _succ
     linked: row._linked || [],
     attachments: [],
     project_id: row.project_id || null,
+    sort_order: row.sort_order ?? 0,
   };
 }
 
@@ -218,5 +223,6 @@ export function frontendToDb(a: Activity): Record<string, unknown> {
     milestone: a.milestone || false,
     lookahead: a.lookahead || false,
     notes: a.notes || '',
+    sort_order: a.sort_order ?? 0,
   };
 }

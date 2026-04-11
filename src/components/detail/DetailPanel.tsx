@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi, debouncedSave } from '@/hooks/useApi';
 import { isoDate, fmt, diffDays, isOverdue, TODAY } from '@/lib/helpers';
@@ -21,17 +21,66 @@ const PHASES = ['Sitework', 'Foundation', 'Structure', 'Rough-In', 'Close-In', '
 const BLOCKERS = ['', 'Predecessor not complete', 'Material not on site', 'RFI pending', 'Submittal pending', 'Inspection required', 'Permit required', 'Owner decision pending', 'Weather delay', 'Manpower shortage', 'Design clarification'];
 
 export default function DetailPanel() {
-  const { activities, selectedActivityId, setSelectedActivity, setDetailOpen, detailOpen, updateActivity, showToast } = useAppStore();
+  // Use narrow selectors so unrelated store changes (e.g. activities array
+  // churn from debounced saves, gantt zoom) don't re-render this panel.
+  const detailOpen = useAppStore((s) => s.detailOpen);
+  const selectedActivityId = useAppStore((s) => s.selectedActivityId);
+  const setSelectedActivity = useAppStore((s) => s.setSelectedActivity);
+  const setDetailOpen = useAppStore((s) => s.setDetailOpen);
+
+  // Short-circuit the whole tree when the panel is closed. Keeping the
+  // ScrollArea + Sections mounted while hidden was making every row click
+  // re-render ~1000 hidden nodes before the panel could flip open.
+  if (!detailOpen || !selectedActivityId) {
+    return <div className="w-0 min-w-0 border-l-0 max-lg:translate-x-full shrink-0" />;
+  }
+
+  return (
+    <DetailPanelInner
+      activityId={selectedActivityId}
+      onClose={() => { setDetailOpen(false); setSelectedActivity(null); }}
+    />
+  );
+}
+
+// Inner component renders only while open. Keyed by activityId so switching
+// activities remounts local state (newNote clears instead of leaking).
+const DetailPanelInner = memo(function DetailPanelInner({
+  activityId,
+  onClose,
+}: {
+  activityId: string;
+  onClose: () => void;
+}) {
+  // Subscribe to just *this* activity — the list reference churns on every
+  // save, so find-on-full-array was re-rendering on every keystroke elsewhere.
+  const a = useAppStore((s) => s.activities.find((x) => x.id === activityId));
+  const updateActivity = useAppStore((s) => s.updateActivity);
+  const showToast = useAppStore((s) => s.showToast);
   const { saveOne } = useApi();
   const [newNote, setNewNote] = useState('');
 
-  const a = activities.find((x) => x.id === selectedActivityId);
+  // Memoize the unique-value dropdown lists. These walked the full 1000+ row
+  // array on every single render — now they only rebuild when the activities
+  // reference actually changes.
+  const activitiesRef = useAppStore((s) => s.activities);
+  const trades = useMemo(
+    () => [...new Set(activitiesRef.map((x) => x.trade).filter(Boolean))].sort(),
+    [activitiesRef]
+  );
+  const areas = useMemo(
+    () => [...new Set(activitiesRef.map((x) => x.area).filter(Boolean))].sort(),
+    [activitiesRef]
+  );
+  const floors = useMemo(
+    () => ['', ...new Set(activitiesRef.map((x) => x.floor).filter(Boolean))],
+    [activitiesRef]
+  );
 
-  const close = () => { setDetailOpen(false); setSelectedActivity(null); };
   const update = (field: keyof Activity, value: unknown) => {
     if (!a) return;
     updateActivity(a.id, { [field]: value } as Partial<Activity>);
-    debouncedSave(() => saveOne(a.id));
+    debouncedSave(() => saveOne(a.id), 300, a.id);
   };
   const quickUpdate = (field: 'status' | 'pct' | 'blocker', value: string | number) => {
     if (!a) return;
@@ -41,7 +90,7 @@ export default function DetailPanel() {
     else if (field === 'blocker') { updates.blocker = value as string; if (value && a.status !== 'Delayed') updates.status = 'Blocked'; if (!value && a.status === 'Blocked') updates.status = a.pct > 0 ? 'In Progress' : 'Not Started'; }
     updateActivity(a.id, updates);
     showToast(`${a.id} updated — ${field}: ${value}`);
-    debouncedSave(() => saveOne(a.id));
+    debouncedSave(() => saveOne(a.id), 300, a.id);
   };
   const addNote = () => {
     if (!a || !newNote.trim()) return;
@@ -53,27 +102,23 @@ export default function DetailPanel() {
     if (!a || !confirm(`Delete ${a.name}?`)) return;
     fetch(`/api/activities/${a.id}`, { method: 'DELETE' }).catch(() => {});
     useAppStore.getState().removeActivity(a.id);
-    close(); showToast(`${a.id} deleted`);
+    onClose(); showToast(`${a.id} deleted`);
   };
 
-  const trades = [...new Set(activities.map((x) => x.trade).filter(Boolean))].sort();
-  const areas = [...new Set(activities.map((x) => x.area).filter(Boolean))].sort();
-  const floors = ['', ...new Set(activities.map((x) => x.floor).filter(Boolean))];
+  // Activity may have been deleted while panel open — render nothing.
+  if (!a) return null;
 
   return (
     <div className={cn(
-      "w-[400px] min-w-[400px] max-h-full h-full bg-card border-l flex flex-col overflow-hidden transition-all duration-300",
+      "w-[400px] min-w-[400px] max-h-full h-full bg-card border-l flex flex-col overflow-hidden",
       "max-lg:fixed max-lg:right-0 max-lg:top-0 max-lg:bottom-0 max-lg:z-50 max-lg:shadow-xl",
       "max-md:w-full max-md:min-w-full",
-      (!detailOpen || !a) && "w-0 min-w-0 border-l-0 max-lg:translate-x-full"
     )}>
-      {a && (
-        <>
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3.5 border-b bg-card sticky top-0 z-10">
-            <h3 className="text-sm font-semibold truncate">{a.name}</h3>
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={close}><X className="h-4 w-4" /></Button>
-          </div>
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3.5 border-b bg-card sticky top-0 z-10">
+        <h3 className="text-sm font-semibold truncate">{a.name}</h3>
+        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onClose}><X className="h-4 w-4" /></Button>
+      </div>
 
           {/* Progress */}
           <div className="flex items-center gap-3 px-5 py-3 bg-muted/50 border-b">
@@ -151,11 +196,9 @@ export default function DetailPanel() {
               </Section>
             </div>
           </ScrollArea>
-        </>
-      )}
     </div>
   );
-}
+});
 
 function Section({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return (

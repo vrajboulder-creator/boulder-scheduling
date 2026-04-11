@@ -31,11 +31,20 @@ export function fmtFull(d: string | Date | null | undefined): string {
 }
 
 export function addDays(d: string | Date | null | undefined, n: number): Date {
-  return new Date((parseDate(d) || TODAY).getTime() + n * DAY_MS);
+  // Calendar-based: avoids DST drift. setDate() normalizes month/year.
+  const base = parseDate(d) || TODAY;
+  const out = new Date(base.getFullYear(), base.getMonth(), base.getDate() + n);
+  return out;
 }
 
 export function diffDays(a: string | Date | null | undefined, b: string | Date | null | undefined): number {
-  return Math.round(((parseDate(b) || new Date()).getTime() - (parseDate(a) || new Date()).getTime()) / DAY_MS);
+  // Calendar-based: normalize both to local midnight, then divide.
+  // Round handles the 23h/25h DST days that would otherwise yield 22.96 / 25.04.
+  const pa = parseDate(a); const pb = parseDate(b);
+  if (!pa || !pb) return 0;
+  const ua = Date.UTC(pa.getFullYear(), pa.getMonth(), pa.getDate());
+  const ub = Date.UTC(pb.getFullYear(), pb.getMonth(), pb.getDate());
+  return Math.round((ub - ua) / DAY_MS);
 }
 
 export function isoDate(d: string | Date | null | undefined): string {
@@ -115,31 +124,41 @@ export function applyFilters(
   });
 }
 
-export function getWeatherDesc(code: number): { icon: string; text: string } {
-  const map: Record<number, { icon: string; text: string }> = {
-    0: { icon: '☀️', text: 'Clear sky' },
-    1: { icon: '🌤', text: 'Mainly clear' },
-    2: { icon: '⛅', text: 'Partly cloudy' },
-    3: { icon: '☁️', text: 'Overcast' },
-    45: { icon: '🌫', text: 'Fog' },
-    48: { icon: '🌫', text: 'Freezing fog' },
-    51: { icon: '🌦', text: 'Light drizzle' },
-    53: { icon: '🌦', text: 'Drizzle' },
-    55: { icon: '🌧', text: 'Heavy drizzle' },
-    61: { icon: '🌧', text: 'Light rain' },
-    63: { icon: '🌧', text: 'Rain' },
-    65: { icon: '🌧', text: 'Heavy rain' },
-    71: { icon: '🌨', text: 'Light snow' },
-    73: { icon: '🌨', text: 'Snow' },
-    75: { icon: '🌨', text: 'Heavy snow' },
-    80: { icon: '🌦', text: 'Rain showers' },
-    81: { icon: '🌧', text: 'Moderate showers' },
-    82: { icon: '🌧', text: 'Heavy showers' },
-    95: { icon: '⚡', text: 'Thunderstorm' },
-    96: { icon: '⚡', text: 'Thunderstorm + hail' },
-    99: { icon: '⚡', text: 'Severe thunderstorm' },
+// ─── Weather code → lucide icon name + label + tailwind color class ───
+// Open-Meteo WMO codes: https://open-meteo.com/en/docs
+// Returns a lucide *icon name* (string) so consumers can import the icon
+// themselves without helpers.ts pulling in React. The `color` value is a
+// tailwind text-color class tuned for each condition.
+export type WeatherIconName =
+  | 'Sun' | 'CloudSun' | 'Cloud' | 'Cloudy' | 'CloudFog'
+  | 'CloudDrizzle' | 'CloudRain' | 'CloudRainWind'
+  | 'CloudSnow' | 'Snowflake' | 'CloudLightning' | 'CloudOff';
+
+export function getWeatherDesc(code: number): { icon: WeatherIconName; text: string; color: string } {
+  const map: Record<number, { icon: WeatherIconName; text: string; color: string }> = {
+    0:  { icon: 'Sun',            text: 'Clear sky',          color: 'text-amber-500' },
+    1:  { icon: 'Sun',            text: 'Mainly clear',       color: 'text-amber-500' },
+    2:  { icon: 'CloudSun',       text: 'Partly cloudy',      color: 'text-amber-400' },
+    3:  { icon: 'Cloudy',         text: 'Overcast',           color: 'text-slate-400' },
+    45: { icon: 'CloudFog',       text: 'Fog',                color: 'text-slate-400' },
+    48: { icon: 'CloudFog',       text: 'Freezing fog',       color: 'text-sky-300' },
+    51: { icon: 'CloudDrizzle',   text: 'Light drizzle',      color: 'text-sky-400' },
+    53: { icon: 'CloudDrizzle',   text: 'Drizzle',            color: 'text-sky-500' },
+    55: { icon: 'CloudRain',      text: 'Heavy drizzle',      color: 'text-sky-600' },
+    61: { icon: 'CloudRain',      text: 'Light rain',         color: 'text-sky-500' },
+    63: { icon: 'CloudRain',      text: 'Rain',               color: 'text-sky-600' },
+    65: { icon: 'CloudRainWind',  text: 'Heavy rain',         color: 'text-sky-700' },
+    71: { icon: 'CloudSnow',      text: 'Light snow',         color: 'text-sky-200' },
+    73: { icon: 'CloudSnow',      text: 'Snow',               color: 'text-sky-300' },
+    75: { icon: 'Snowflake',      text: 'Heavy snow',         color: 'text-sky-400' },
+    80: { icon: 'CloudDrizzle',   text: 'Rain showers',       color: 'text-sky-500' },
+    81: { icon: 'CloudRain',      text: 'Moderate showers',   color: 'text-sky-600' },
+    82: { icon: 'CloudRainWind',  text: 'Heavy showers',      color: 'text-sky-700' },
+    95: { icon: 'CloudLightning', text: 'Thunderstorm',       color: 'text-violet-500' },
+    96: { icon: 'CloudLightning', text: 'Thunderstorm + hail',color: 'text-violet-600' },
+    99: { icon: 'CloudLightning', text: 'Severe thunderstorm',color: 'text-violet-700' },
   };
-  return map[code] || { icon: '⛅', text: 'Unknown' };
+  return map[code] || { icon: 'CloudSun', text: 'Unknown', color: 'text-slate-400' };
 }
 
 // Trade color mapping for consistent badge colors

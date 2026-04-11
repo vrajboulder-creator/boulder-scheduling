@@ -75,10 +75,12 @@ export function useApi() {
 
   async function saveOne(id: string): Promise<boolean> {
     try {
-      const a = activities.find((x) => x.id === id);
+      // Read the freshest activities list from the store — closing over the
+      // hook-captured `activities` would persist a stale row when saves fire
+      // after multiple rapid updates (e.g. swap partner writes).
+      const fresh = useAppStore.getState().activities;
+      const a = fresh.find((x) => x.id === id);
       if (!a) return false;
-      // Use bulk upsert (insert-or-update) so fallback data that doesn't
-      // exist in DB yet gets created on first edit
       const dbRow = frontendToDb(a);
       const resp = await fetch(`${API_BASE}/bulk/save`, {
         method: 'POST',
@@ -118,9 +120,13 @@ export function useApi() {
   return { loadAll, saveAll, saveOne, createOne, deleteOne };
 }
 
-// Debounced save helper
-let _saveTimer: ReturnType<typeof setTimeout> | null = null;
-export function debouncedSave(fn: () => Promise<boolean>, delay = 300) {
-  if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(fn, delay);
+// Per-key debounced save. Each activity id gets its own timer so rapid
+// drags on different bars don't cancel each other.
+const _saveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+export function debouncedSave(fn: () => Promise<boolean>, delay = 300, key = '__default__') {
+  if (_saveTimers[key]) clearTimeout(_saveTimers[key]);
+  _saveTimers[key] = setTimeout(() => {
+    delete _saveTimers[key];
+    fn();
+  }, delay);
 }

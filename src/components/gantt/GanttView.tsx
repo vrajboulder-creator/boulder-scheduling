@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi, debouncedSave } from '@/hooks/useApi';
 import { parseDate, addDays, diffDays, isoDate, fmt, TODAY, getTradeColor, applyFilters } from '@/lib/helpers';
@@ -63,53 +63,115 @@ export default function GanttView() {
 
   // ─── FILTERS ───
   const st = getSectionState('gantt');
-  const allFiltered = applyFilters(activities, st, searchQuery).filter((a) => a.start || a.finish);
+
+  // Narrow the source list with dated-only and the *current* filters.
+  // Memoized so pan/zoom/resize don't recompute O(n) work on every render.
+  const allFiltered = useMemo(
+    () => applyFilters(activities, st, searchQuery).filter((a) => a.start || a.finish),
+    [activities, st, searchQuery]
+  );
 
   // Apply date range filter
-  const presetRange = datePreset === 'custom'
-    ? (customFrom && customTo ? { from: parseDate(customFrom)!, to: parseDate(customTo)! } : null)
-    : getPresetRange(datePreset, allFiltered);
+  const presetRange = useMemo(() => {
+    if (datePreset === 'custom') {
+      const from = parseDate(customFrom);
+      const to = parseDate(customTo);
+      return from && to ? { from, to } : null;
+    }
+    return getPresetRange(datePreset, allFiltered);
+  }, [datePreset, customFrom, customTo, allFiltered]);
 
-  const filtered = presetRange
-    ? allFiltered.filter((a) => {
-        const s = parseDate(a.start || a.finish);
-        const f = parseDate(a.finish || a.start);
-        if (!s || !f) return false;
-        return f >= presetRange.from && s <= presetRange.to;
-      })
-    : allFiltered;
+  const filtered = useMemo(() => {
+    if (!presetRange) return allFiltered;
+    return allFiltered.filter((a) => {
+      const s = parseDate(a.start || a.finish);
+      const f = parseDate(a.finish || a.start);
+      if (!s || !f) return false;
+      return f >= presetRange.from && s <= presetRange.to;
+    });
+  }, [allFiltered, presetRange]);
 
-  const dynTrades = [...new Set(activities.map((a) => a.trade).filter(Boolean))].sort();
-  const dynAreas = [...new Set(activities.map((a) => a.area).filter(Boolean))].sort();
-  const dynStatuses = [...new Set(activities.map((a) => a.status).filter(Boolean))].sort();
-  const dynPhases = [...new Set(activities.map((a) => a.phase).filter(Boolean))].sort();
+  // Dropdown options narrow as other filters are applied (bug #12).
+  // Each list is computed against the *other* filters so choosing one
+  // doesn't hide the currently-selected value in its own dropdown.
+  const narrowFor = (exclude: keyof typeof st) => {
+    const partial = { ...st, [exclude]: '' };
+    return applyFilters(activities, partial, searchQuery).filter((a) => a.start || a.finish);
+  };
+  const dynTrades = useMemo(() => [...new Set(narrowFor('trade').map((a) => a.trade).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dynAreas = useMemo(() => [...new Set(narrowFor('area').map((a) => a.area).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dynStatuses = useMemo(() => [...new Set(narrowFor('status').map((a) => a.status).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dynPhases = useMemo(() => [...new Set(narrowFor('phase').map((a) => a.phase).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Group by trade
-  const grouped: Record<string, Activity[]> = {};
-  [...filtered].sort((a, b) => {
-    const sa = parseDate(a.start || a.finish)?.getTime() || 0;
-    const sb = parseDate(b.start || b.finish)?.getTime() || 0;
-    return sa - sb;
-  }).forEach((a) => { (grouped[a.trade] = grouped[a.trade] || []).push(a); });
-  const trades = Object.keys(grouped);
+  // Group by trade. Sort key is (start_date, sort_order, id) — sort_order
+  // is a manual tiebreaker used when two activities share a date so the
+  // user's drag-reorder survives re-renders.
+  const grouped = useMemo(() => {
+    const g: Record<string, Activity[]> = {};
+    [...filtered].sort((a, b) => {
+      const sa = parseDate(a.start || a.finish)?.getTime() || 0;
+      const sb = parseDate(b.start || b.finish)?.getTime() || 0;
+      if (sa !== sb) return sa - sb;
+      const oa = a.sort_order ?? 0;
+      const ob = b.sort_order ?? 0;
+      if (oa !== ob) return oa - ob;
+      return a.id.localeCompare(b.id);
+    }).forEach((a) => { (g[a.trade] = g[a.trade] || []).push(a); });
+    return g;
+  }, [filtered]);
+  const trades = useMemo(() => Object.keys(grouped), [grouped]);
 
-  // Date range for timeline
-  const allTimes = filtered.flatMap((a) => [parseDate(a.start || a.finish)?.getTime() || 0, parseDate(a.finish || a.start)?.getTime() || 0]).filter((t) => t > 0);
-  const hasData = allTimes.length > 0;
-
-  const projStart = hasData ? (presetRange ? addDays(presetRange.from, -3) : addDays(new Date(Math.min(...allTimes)), -7)) : TODAY;
-  const projEnd = hasData ? (presetRange ? addDays(presetRange.to, 3) : addDays(new Date(Math.max(...allTimes)), 14)) : addDays(TODAY, 30);
-  const totalDays = Math.max(7, diffDays(projStart, projEnd));
-  const timelineW = totalDays * pxDay;
+  // Date range for timeline. Mirror the bar-rendering logic so the timeline
+  // bounds include synthesized endpoints (duration-derived) — otherwise a
+  // finish-only, 8-day activity contributes only one day and the bar would
+  // get clipped past projEnd.
+  const { projStart, projEnd, totalDays, timelineW, hasData } = useMemo(() => {
+    const times: number[] = [];
+    filtered.forEach((a) => {
+      const dur = Math.max(1, a.duration || 1);
+      let s = parseDate(a.start);
+      let f = parseDate(a.finish);
+      if (s && !f) f = addDays(s, dur - 1);
+      else if (f && !s) s = addDays(f, -(dur - 1));
+      if (s) times.push(s.getTime());
+      if (f) times.push(f.getTime());
+    });
+    const has = times.length > 0;
+    const ps = has
+      ? (presetRange ? addDays(presetRange.from, -3) : addDays(new Date(Math.min(...times)), -7))
+      : TODAY;
+    const pe = has
+      ? (presetRange ? addDays(presetRange.to, 3) : addDays(new Date(Math.max(...times)), 14))
+      : addDays(TODAY, 30);
+    // totalDays is inclusive of both endpoints so the timeline fully contains projEnd.
+    const td = Math.max(7, diffDays(ps, pe) + 1);
+    return { projStart: ps, projEnd: pe, totalDays: td, timelineW: td * pxDay, hasData: has };
+  }, [filtered, presetRange, pxDay]);
 
   // Flat rows
   interface RowData { type: 'trade' | 'activity'; trade: string; activity?: Activity; idx: number }
-  const rows: RowData[] = [];
-  let flatIdx = 0;
-  trades.forEach((trade) => {
-    rows.push({ type: 'trade', trade, idx: flatIdx++ });
-    grouped[trade].forEach((act) => { rows.push({ type: 'activity', trade, activity: act, idx: flatIdx++ }); });
-  });
+  const rows = useMemo(() => {
+    const r: RowData[] = [];
+    let flatIdx = 0;
+    trades.forEach((trade) => {
+      r.push({ type: 'trade', trade, idx: flatIdx++ });
+      grouped[trade].forEach((act) => { r.push({ type: 'activity', trade, activity: act, idx: flatIdx++ }); });
+    });
+    return r;
+  }, [trades, grouped]);
+
+  // Activity-id → cumulative Y coordinate (top of its row) and total chart height.
+  // Needed for dependency arrows (#16) because trade headers (30px) and activity
+  // rows (28px) have different heights, so indexing alone can't give pixel Y.
+  const { idToRowY, totalRowsHeight } = useMemo(() => {
+    const m: Record<string, number> = {};
+    let y = 0;
+    rows.forEach((r) => {
+      if (r.type === 'activity') m[r.activity!.id] = y;
+      y += r.type === 'trade' ? TRADE_H : ROW_H;
+    });
+    return { idToRowY: m, totalRowsHeight: y };
+  }, [rows]);
 
   // ─── DATE GUIDE HELPERS ───
   function showDateGuideAtPx(xPos: number) {
@@ -146,13 +208,15 @@ export default function GanttView() {
     } catch { /* ignore */ }
   }
 
-  // Scroll to today on mount
+  // Scroll to today once — but wait until data actually arrives.
+  // Boot renders with 0 activities, so the mount-only version missed.
+  const didInitialScroll = useRef(false);
   useEffect(() => {
-    if (timelineRef.current) {
-      timelineRef.current.scrollLeft = Math.max(0, diffDays(projStart, TODAY) * pxDay - 200);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (didInitialScroll.current || !hasData || !timelineRef.current) return;
+    const x = Math.max(0, diffDays(projStart, TODAY) * pxDay - 200);
+    timelineRef.current.scrollLeft = x;
+    didInitialScroll.current = true;
+  }, [hasData, projStart, pxDay]);
 
   // Ctrl+wheel zoom
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -206,7 +270,7 @@ export default function GanttView() {
     document.addEventListener('mouseup', onUp);
   };
 
-  // ─── BAR DRAG (with date guide) ───
+  // ─── BAR DRAG (with date guide + edge auto-scroll) ───
   const handleBarMouseDown = (e: React.MouseEvent, actId: string) => {
     const target = e.currentTarget as HTMLDivElement;
     if ((e.target as HTMLElement).dataset.handle) return;
@@ -221,6 +285,9 @@ export default function GanttView() {
     const barRect = target.getBoundingClientRect();
     const cursorToLeftEdge = startX - barRect.left;
     let dragged = false;
+    let lastClientX = startX;
+    let lastClientY = startY;
+    let autoScrollRaf = 0;
 
     document.body.style.overflow = 'hidden';
     target.style.zIndex = '100';
@@ -234,11 +301,42 @@ export default function GanttView() {
     const rightRows = Array.from(document.querySelectorAll('[data-gantt-row]')) as HTMLDivElement[];
     let dropTargetId: string | null = null;
 
+    // Auto-scroll the timeline when cursor nears an edge (bug #13)
+    const AUTO_SCROLL_ZONE = 40;
+    const AUTO_SCROLL_MAX = 18;
+    function tickAutoScroll() {
+      const el = timelineRef.current;
+      if (!el) { autoScrollRaf = 0; return; }
+      const rect = el.getBoundingClientRect();
+      let dxScroll = 0;
+      let dyScroll = 0;
+      if (lastClientX < rect.left + AUTO_SCROLL_ZONE) {
+        dxScroll = -Math.min(AUTO_SCROLL_MAX, (rect.left + AUTO_SCROLL_ZONE) - lastClientX);
+      } else if (lastClientX > rect.right - AUTO_SCROLL_ZONE) {
+        dxScroll = Math.min(AUTO_SCROLL_MAX, lastClientX - (rect.right - AUTO_SCROLL_ZONE));
+      }
+      if (lastClientY < rect.top + AUTO_SCROLL_ZONE) {
+        dyScroll = -Math.min(AUTO_SCROLL_MAX, (rect.top + AUTO_SCROLL_ZONE) - lastClientY);
+      } else if (lastClientY > rect.bottom - AUTO_SCROLL_ZONE) {
+        dyScroll = Math.min(AUTO_SCROLL_MAX, lastClientY - (rect.bottom - AUTO_SCROLL_ZONE));
+      }
+      if (dxScroll !== 0 || dyScroll !== 0) {
+        el.scrollLeft += dxScroll;
+        el.scrollTop += dyScroll;
+      }
+      autoScrollRaf = requestAnimationFrame(tickAutoScroll);
+    }
+
     const onMove = (ev: MouseEvent) => {
+      lastClientX = ev.clientX;
+      lastClientY = ev.clientY;
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
-      dragged = true;
+      if (!dragged) {
+        dragged = true;
+        if (!autoScrollRaf) autoScrollRaf = requestAnimationFrame(tickAutoScroll);
+      }
       target.style.transform = `translate(${dx}px, ${dy}px)`;
 
       showDateGuide(ev.clientX - cursorToLeftEdge);
@@ -256,7 +354,6 @@ export default function GanttView() {
         const rect = r.getBoundingClientRect();
         if (ev.clientY >= rect.top && ev.clientY <= rect.bottom) {
           dropTargetId = rowId;
-          // Highlight both left and right rows for this ID
           leftRows.filter(lr => lr.dataset.leftRow === rowId).forEach(lr => lr.style.background = 'rgba(232,121,59,0.12)');
           rightRows.filter(rr => rr.dataset.ganttRow === rowId).forEach(rr => rr.style.background = 'rgba(232,121,59,0.08)');
           break;
@@ -267,6 +364,7 @@ export default function GanttView() {
     const onUp = (ev: MouseEvent) => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      if (autoScrollRaf) { cancelAnimationFrame(autoScrollRaf); autoScrollRaf = 0; }
       document.body.style.overflow = '';
       target.style.zIndex = '';
       target.style.opacity = '';
@@ -283,34 +381,77 @@ export default function GanttView() {
       const daysDelta = Math.round(dx / pxDay);
       const updates: Partial<Activity> = {};
 
-      // Trade/sub reassignment
+      // Compute current/synthesized span once — used for date math below.
+      const dur = Math.max(1, a.duration || 1);
+      const curStart = parseDate(a.start) || (parseDate(a.finish) ? addDays(a.finish, -(dur - 1)) : null);
+      const curFinish = parseDate(a.finish) || (parseDate(a.start) ? addDays(a.start, dur - 1) : null);
+      const span = curStart && curFinish ? diffDays(curStart, curFinish) : dur - 1;
+
+      // Drop onto another row.
+      // - Different trade → reassign trade/sub/area/floor, keep dates.
+      // - Same trade → POSITIONAL SWAP: the dragged and target activities
+      //   swap their start_date, finish_date, duration, and sort_order so
+      //   they literally trade places in the Gantt.
+      let reordered = false;
+      let swapTargetId: string | null = null;
+      let swapTargetUpdates: Partial<Activity> | null = null;
       if (dropTargetId) {
         const targetAct = activities.find((x) => x.id === dropTargetId);
         if (targetAct && targetAct.id !== a.id) {
-          const oldTrade = a.trade;
-          const oldSub = a.sub;
-          updates.trade = targetAct.trade;
-          updates.sub = targetAct.sub || SUBS[targetAct.trade] || '';
-          updates.area = targetAct.area;
-          updates.floor = targetAct.floor;
-          if (targetAct.trade !== oldTrade) {
+          if (targetAct.trade !== a.trade) {
+            // Cross-trade: reassign attributes
+            const oldTrade = a.trade;
+            updates.trade = targetAct.trade;
+            updates.sub = targetAct.sub || SUBS[targetAct.trade] || '';
+            updates.area = targetAct.area;
+            updates.floor = targetAct.floor;
             showToast(`${a.id} → ${targetAct.trade} (was ${oldTrade})`);
-          } else if (targetAct.sub !== oldSub) {
-            showToast(`${a.id} → sub: ${updates.sub} (was ${oldSub})`);
+          } else {
+            // Same trade: swap positions.
+            updates.start = targetAct.start;
+            updates.finish = targetAct.finish;
+            updates.duration = targetAct.duration;
+            updates.sort_order = targetAct.sort_order ?? 0;
+
+            swapTargetId = targetAct.id;
+            swapTargetUpdates = {
+              start: a.start,
+              finish: a.finish,
+              duration: a.duration,
+              sort_order: a.sort_order ?? 0,
+            };
+            reordered = true;
+            showToast(`Swapped: ${a.id} ↔ ${targetAct.id}`);
           }
         }
       }
+      // Silence unused-var warning for span/curFinish when swap path used.
+      void span; void curFinish;
 
-      // Date shift
-      if (daysDelta !== 0) {
-        updates.start = isoDate(addDays(a.start, daysDelta));
-        updates.finish = isoDate(addDays(a.finish, daysDelta));
+      // Horizontal date shift — only if the user didn't already reorder (reorder
+      // sets explicit dates; applying delta on top would double-move). Bug #5:
+      // shift only date(s) that exist.
+      if (!reordered && daysDelta !== 0) {
+        if (a.start) updates.start = isoDate(addDays(a.start, daysDelta));
+        if (a.finish) updates.finish = isoDate(addDays(a.finish, daysDelta));
       }
 
       if (Object.keys(updates).length > 0) {
+        console.log('[Gantt drag] writing updates', { id: a.id, reordered, daysDelta, dropTargetId, updates });
         updateActivity(a.id, updates);
-        showToast(`${a.id}: ${fmt(updates.start || a.start)} – ${fmt(updates.finish || a.finish)} | ${updates.trade || a.trade}`);
-        debouncedSave(() => saveOne(a.id));
+        if (!reordered) {
+          showToast(`${a.id}: ${fmt(updates.start || a.start)} – ${fmt(updates.finish || a.finish)} | ${updates.trade || a.trade}`);
+        }
+        debouncedSave(() => saveOne(a.id), 300, a.id);
+
+        // Persist the other half of a positional swap.
+        if (swapTargetId && swapTargetUpdates) {
+          console.log('[Gantt drag] swap partner updates', { id: swapTargetId, updates: swapTargetUpdates });
+          updateActivity(swapTargetId, swapTargetUpdates);
+          debouncedSave(() => saveOne(swapTargetId!), 300, swapTargetId);
+        }
+      } else {
+        console.log('[Gantt drag] no changes to write', { id: a.id, dropTargetId, daysDelta });
       }
     };
     document.addEventListener('mousemove', onMove);
@@ -318,17 +459,46 @@ export default function GanttView() {
   };
 
   // ─── RESIZE HANDLE (with date guide) ───
+  // Bar width convention: inclusive-of-both-endpoints.
+  //   1-day bar (start == finish) → width = 1 * pxDay
+  //   N-day bar (finish = start + N-1) → width = N * pxDay
+  // So `durationDays = round(width / pxDay)` and `finish = start + durationDays - 1`.
   const handleResizeMouseDown = (e: React.MouseEvent, actId: string, edge: 'left' | 'right') => {
     e.preventDefault();
     e.stopPropagation();
 
+    console.log('[Gantt resize] mousedown', { actId, edge, clientX: e.clientX });
+
     const a = activities.find((x) => x.id === actId);
-    if (!a) return;
+    if (!a) {
+      console.warn('[Gantt resize] activity not found', actId);
+      return;
+    }
+
+    // Synthesize missing endpoint from duration — same rule the render uses.
+    const dur = Math.max(1, a.duration || 1);
+    const resolvedStart = parseDate(a.start) || (parseDate(a.finish) ? addDays(a.finish, -(dur - 1)) : null);
+    const resolvedFinish = parseDate(a.finish) || (parseDate(a.start) ? addDays(a.start, dur - 1) : null);
+    if (!resolvedStart || !resolvedFinish) {
+      console.warn('[Gantt resize] cannot resolve start/finish', {
+        id: a.id, start: a.start, finish: a.finish, duration: a.duration,
+      });
+      return;
+    }
+    const baseStart = isoDate(resolvedStart);
+    const baseFinish = isoDate(resolvedFinish);
+    console.log('[Gantt resize] resolved', { id: a.id, baseStart, baseFinish, dur });
 
     const bar = (e.currentTarget as HTMLElement).parentElement as HTMLDivElement;
+    if (!bar) {
+      console.warn('[Gantt resize] bar element not found — handle has no parent');
+      return;
+    }
     const startX = e.clientX;
     const startWidth = bar.offsetWidth;
     const startLeft = bar.offsetLeft;
+    console.log('[Gantt resize] bar rect', { startWidth, startLeft, pxDay });
+
     let dragged = false;
     bar.style.transition = 'none';
     bar.style.zIndex = '10';
@@ -336,18 +506,17 @@ export default function GanttView() {
     const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - startX;
       if (Math.abs(dx) < 2) return;
+      if (!dragged) console.log('[Gantt resize] drag start', { edge, dx });
       dragged = true;
       if (edge === 'right') {
         const newW = Math.max(pxDay, startWidth + dx);
         bar.style.width = `${newW}px`;
-        // Guide at the right edge of the bar (absolute px in timeline)
-        showDateGuideAtPx(startLeft + newW);
+        showDateGuideAtPx(startLeft + newW - pxDay);
       } else {
-        const newLeft = startLeft + dx;
+        const newLeft = Math.min(startLeft + dx, startLeft + startWidth - pxDay);
         const newW = Math.max(pxDay, startWidth - dx);
         bar.style.left = `${newLeft}px`;
         bar.style.width = `${newW}px`;
-        // Guide at the left edge of the bar
         showDateGuideAtPx(newLeft);
       }
     };
@@ -358,37 +527,91 @@ export default function GanttView() {
       bar.style.transition = '';
       bar.style.zIndex = '';
       hideDateGuide();
-      if (!dragged) return;
+      console.log('[Gantt resize] mouseup', { dragged });
+      if (!dragged) {
+        // Restore visual state in case the DOM style lingered
+        bar.style.width = `${startWidth}px`;
+        bar.style.left = `${startLeft}px`;
+        return;
+      }
 
       const finalWidth = bar.offsetWidth;
       const newDurationDays = Math.max(1, Math.round(finalWidth / pxDay));
       const updates: Partial<Activity> = { duration: newDurationDays };
-      if (edge === 'right') { updates.finish = isoDate(addDays(a.start, newDurationDays)); }
-      else { updates.start = isoDate(addDays(a.finish, -newDurationDays)); }
+      if (edge === 'right') {
+        updates.finish = isoDate(addDays(baseStart, newDurationDays - 1));
+        updates.start = baseStart; // persist resolved start if it was null
+      } else {
+        updates.start = isoDate(addDays(baseFinish, -(newDurationDays - 1)));
+        updates.finish = baseFinish;
+      }
+
+      console.log('[Gantt resize] writing updates', {
+        id: a.id, edge, finalWidth, newDurationDays, updates,
+      });
 
       updateActivity(a.id, updates);
       showToast(`${a.id}: ${fmt(updates.start || a.start)} – ${fmt(updates.finish || a.finish)} (${newDurationDays}d)`);
-      debouncedSave(() => saveOne(a.id));
+      debouncedSave(async () => {
+        const ok = await saveOne(a.id);
+        console.log('[Gantt resize] save result', { id: a.id, ok });
+        return ok;
+      }, 300, a.id);
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   };
 
   // ─── HEADERS ───
-  const monthHeaders: { label: string; x: number; w: number }[] = [];
-  const weekHeaders: { label: string; x: number; w: number }[] = [];
-  const d = new Date(projStart);
-  while (d <= projEnd) {
-    const dayOffset = diffDays(projStart, d);
-    const x = dayOffset * pxDay;
-    if (d.getDate() === 1 || dayOffset === 0) {
-      const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      monthHeaders.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }), x, w: Math.min(diffDays(d, monthEnd) + 1, diffDays(d, projEnd)) * pxDay });
+  // Memoized so pan/selection don't rebuild every render.
+  const { monthHeaders, weekHeaders, weekendStripes, todayX } = useMemo(() => {
+    const mh: { label: string; x: number; w: number }[] = [];
+    const wh: { label: string; x: number; w: number }[] = [];
+    const ws: { x: number; w: number }[] = [];
+    const d = new Date(projStart);
+    while (d <= projEnd) {
+      const dayOffset = diffDays(projStart, d);
+      const x = dayOffset * pxDay;
+
+      // Month header: starts at day 1 of a month OR at the project start.
+      // Width = days remaining in this month, but clamped so we never overrun
+      // the timeline (bug #9).
+      if (d.getDate() === 1 || dayOffset === 0) {
+        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const daysRemainingInMonth = diffDays(d, monthEnd) + 1;
+        const daysRemainingInProject = totalDays - dayOffset;
+        const w = Math.max(0, Math.min(daysRemainingInMonth, daysRemainingInProject)) * pxDay;
+        if (w > 0) {
+          mh.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }), x, w });
+        }
+      }
+
+      // Week header: every Monday, OR day 0 (so leading partial week is labeled — bug #8).
+      // Width is clamped to the end of timeline so trailing partial week fits.
+      if (d.getDay() === 1 || dayOffset === 0) {
+        const daysToNextMonday = d.getDay() === 1 ? 7 : (8 - d.getDay()) % 7 || 7;
+        const daysRemainingInProject = totalDays - dayOffset;
+        const w = Math.min(daysToNextMonday, daysRemainingInProject) * pxDay;
+        if (w > 0) {
+          wh.push({ label: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }), x, w });
+        }
+      }
+
+      // Weekend stripes (bug #10): collect once instead of an O(days) map per render.
+      const dow = d.getDay();
+      if (dow === 0 || dow === 6) {
+        ws.push({ x, w: pxDay });
+      }
+
+      d.setDate(d.getDate() + 1);
     }
-    if (d.getDay() === 1) weekHeaders.push({ label: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }), x, w: 7 * pxDay });
-    d.setDate(d.getDate() + 1);
-  }
-  const todayX = diffDays(projStart, TODAY) * pxDay;
+    return {
+      monthHeaders: mh,
+      weekHeaders: wh,
+      weekendStripes: ws,
+      todayX: diffDays(projStart, TODAY) * pxDay,
+    };
+  }, [projStart, projEnd, totalDays, pxDay]);
 
   const hasActiveFilters = st.trade || st.area || st.status || st.phase || datePreset !== 'all';
 
@@ -444,7 +667,12 @@ export default function GanttView() {
 
         <div className="flex items-center gap-1.5">
           <CalendarRange className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <SelectNative value={datePreset} onChange={(e) => setDatePreset(e.target.value as DatePreset)} className="w-auto min-w-[120px] text-xs h-8">
+          <SelectNative value={datePreset} onChange={(e) => {
+            const next = e.target.value as DatePreset;
+            setDatePreset(next);
+            // Reset custom range when leaving custom mode (bug #17)
+            if (next !== 'custom') { setCustomFrom(''); setCustomTo(''); }
+          }} className="w-auto min-w-[120px] text-xs h-8">
             <option value="all">Whole Project</option>
             <option value="this-week">This Week</option>
             <option value="this-month">This Month</option>
@@ -516,31 +744,82 @@ export default function GanttView() {
           </div>
 
           {/* Bar rows */}
-          <div className="relative" style={{ width: timelineW, minHeight: rows.length * ROW_H }}>
+          <div className="relative" style={{ width: timelineW, minHeight: totalRowsHeight }}>
             {/* Today line */}
             <div className="absolute top-0 bottom-0 w-[2px] z-[5] pointer-events-none" style={{ left: todayX, background: 'hsl(var(--destructive))', opacity: 0.4 }}>
               <div className="absolute -top-0.5 -left-[5px] w-3 h-3 rounded-full bg-destructive opacity-60" />
             </div>
 
-            {/* Weekend shading */}
-            {Array.from({ length: totalDays }).map((_, i) => {
-              const dayDate = addDays(projStart, i);
-              const dow = dayDate.getDay();
-              if (dow !== 0 && dow !== 6) return null;
-              return <div key={i} className="absolute top-0 bottom-0 bg-muted/30 pointer-events-none" style={{ left: i * pxDay, width: pxDay }} />;
-            })}
+            {/* Weekend shading (precomputed — bug #10) */}
+            {weekendStripes.map((s, i) => (
+              <div key={i} className="absolute top-0 bottom-0 bg-muted/30 pointer-events-none" style={{ left: s.x, width: s.w }} />
+            ))}
+
+            {/* Dependency arrows (bug #16) */}
+            <svg className="absolute top-0 left-0 pointer-events-none" width={timelineW} height={totalRowsHeight} style={{ zIndex: 2 }}>
+              <defs>
+                <marker id="gantt-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="hsl(var(--muted-foreground))" opacity="0.6" />
+                </marker>
+              </defs>
+              {rows.map((row) => {
+                if (row.type !== 'activity' || !row.activity!.predecessors?.length) return null;
+                const succ = row.activity!;
+                const succRowY = idToRowY[succ.id];
+                if (succRowY === undefined) return null;
+                const succStart = parseDate(succ.start || succ.finish);
+                if (!succStart) return null;
+                const succX = diffDays(projStart, succStart) * pxDay;
+                const succY = succRowY + BAR_Y + BAR_H / 2;
+
+                return succ.predecessors.map((pid) => {
+                  const predRowY = idToRowY[pid];
+                  if (predRowY === undefined) return null; // predecessor filtered out of view
+                  const pred = activities.find((x) => x.id === pid);
+                  if (!pred) return null;
+                  const predFinish = parseDate(pred.finish || pred.start);
+                  if (!predFinish) return null;
+                  // Finish-to-Start: right edge of predecessor's last day → left edge of successor.
+                  const predX = (diffDays(projStart, predFinish) + 1) * pxDay;
+                  const predY = predRowY + BAR_Y + BAR_H / 2;
+                  // L-shape routing with a small elbow
+                  const elbowX = Math.max(predX + 6, succX - 6);
+                  const d = `M ${predX} ${predY} L ${elbowX} ${predY} L ${elbowX} ${succY} L ${succX} ${succY}`;
+                  return (
+                    <path
+                      key={`${pid}->${succ.id}`}
+                      d={d}
+                      fill="none"
+                      stroke="hsl(var(--muted-foreground))"
+                      strokeWidth="1"
+                      opacity="0.55"
+                      markerEnd="url(#gantt-arrow)"
+                    />
+                  );
+                });
+              })}
+            </svg>
 
             {/* Activity rows */}
             {rows.map((row, ri) => {
               if (row.type === 'trade') return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }} />;
 
               const a = row.activity!;
-              const s = parseDate(a.start || a.finish);
-              const f = parseDate(a.finish || a.start);
+              // Resolve start/finish — if only one endpoint exists, derive the
+              // other from `duration` so a 5-day activity with only a finish
+              // date still renders as a 5-day bar, not collapsed to 1 day.
+              const dur = Math.max(1, a.duration || 1);
+              let s = parseDate(a.start);
+              let f = parseDate(a.finish);
+              if (s && !f) f = addDays(s, dur - 1);
+              else if (f && !s) s = addDays(f, -(dur - 1));
               if (!s || !f) return <div key={a.id} style={{ height: ROW_H }} />;
 
+              // Inclusive-of-both-endpoints convention (bug #3):
+              //   1-day bar (start == finish) → 1 * pxDay wide
+              //   N-day bar (finish = start + N-1) → N * pxDay wide
               const barX = diffDays(projStart, s) * pxDay;
-              const barW = Math.max(pxDay, diffDays(s, f) * pxDay);
+              const barW = Math.max(pxDay, (diffDays(s, f) + 1) * pxDay);
               const color = getTradeColor(a.trade);
               const pctW = (a.pct / 100) * barW;
 

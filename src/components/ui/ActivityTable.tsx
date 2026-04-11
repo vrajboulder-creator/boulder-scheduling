@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import type { Activity } from '@/types';
 import { useAppStore } from '@/hooks/useAppStore';
 import { fmt, isOverdue, getTradeColor } from '@/lib/helpers';
@@ -15,8 +16,12 @@ interface Props {
   mode?: 'list' | 'grid';
 }
 
-export default function ActivityTable({ items, mode = 'list' }: Props) {
-  const { setSelectedActivity } = useAppStore();
+// Memoized so unrelated store churn (drag, zoom, sidebar open) can't re-
+// render the 1000+ rows. Re-renders only when `items` or `mode` change.
+function ActivityTableInner({ items, mode = 'list' }: Props) {
+  // Narrow selector — the function ref is stable in Zustand, so this does
+  // not cause re-renders when selection changes.
+  const setSelectedActivity = useAppStore((s) => s.setSelectedActivity);
 
   if (!items.length) {
     return (
@@ -165,3 +170,6 @@ export default function ActivityTable({ items, mode = 'list' }: Props) {
     </div>
   );
 }
+
+const ActivityTable = memo(ActivityTableInner);
+export default ActivityTable;

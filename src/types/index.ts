@@ -39,6 +39,7 @@ export interface ActivityDB {
   milestone: boolean;
   lookahead: boolean;
   notes: string;
+  sort_order?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -67,6 +68,7 @@ export interface Activity {
   successors: string[];
   linked: LinkedItemRef[];
   attachments: AttachmentRef[];
+  sort_order?: number;
 }
 
 export interface LinkedItemRef {
@@ -119,6 +121,8 @@ export interface Attachment {
 // ─── Frontend-specific types ───
 
 export interface ProjectConfig {
+  id: string;
+  code: string;
   name: string;
   lat: number;
   lon: number;
