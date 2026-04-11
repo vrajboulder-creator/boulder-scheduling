@@ -67,6 +67,13 @@ interface AppState {
   ganttSidebarOn: boolean;
   setGanttSidebarOn: (on: boolean) => void;
 
+  // Global preferences (Settings page)
+  defaultViewMode: 'list' | 'grid';
+  setDefaultViewMode: (m: 'list' | 'grid') => void;
+  dateFormat: 'short' | 'long' | 'iso';
+  setDateFormat: (f: 'short' | 'long' | 'iso') => void;
+  clearAllFilters: () => void;
+
   // Next ID
   nextId: number;
   genId: () => string;
@@ -158,6 +165,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGanttFullscreen: (fs) => set({ ganttFullscreen: fs }),
   ganttSidebarOn: true,
   setGanttSidebarOn: (on) => set({ ganttSidebarOn: on }),
+
+  // Global preferences — session-only, consumed by Settings page.
+  defaultViewMode: 'list',
+  setDefaultViewMode: (m) => set({ defaultViewMode: m }),
+  dateFormat: 'short',
+  setDateFormat: (f) => set({ dateFormat: f }),
+  clearAllFilters: () => set({ sectionState: {}, searchQuery: '' }),
 
   nextId: 100,
   genId: () => {

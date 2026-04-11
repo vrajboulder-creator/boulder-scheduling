@@ -6,6 +6,8 @@ import MasterView from './MasterView';
 import FilteredView from './FilteredView';
 import GanttView from '@/components/gantt/GanttView';
 import CalendarView from './CalendarView';
+import ProjectsView from './ProjectsView';
+import SettingsView from './SettingsView';
 import WeatherCard from '@/components/ui/WeatherCard';
 
 export default function ViewSwitcher() {
@@ -17,8 +19,8 @@ export default function ViewSwitcher() {
       case 'master': return <MasterView />;
       case 'gantt': return <GanttView />;
       case 'calendar': return <CalendarView />;
-      case 'projects': return <Placeholder title="Projects" desc="Project management view — switch projects using the header dropdown." />;
-      case 'settings': return <Placeholder title="Settings" desc="Settings view — configure weather, project, and display preferences." />;
+      case 'projects': return <ProjectsView />;
+      case 'settings': return <SettingsView />;
       default: return <FilteredView view={currentView} />;
     }
   };
@@ -31,11 +33,3 @@ export default function ViewSwitcher() {
   );
 }
 
-function Placeholder({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
-      <h3 className="text-lg font-semibold mb-2">{title}</h3>
-      <p className="text-sm text-muted-foreground max-w-md">{desc}</p>
-    </div>
-  );
-}
