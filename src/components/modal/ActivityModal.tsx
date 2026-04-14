@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi } from '@/hooks/useApi';
 import { isoDate, addDays, diffDays, parseDate, TODAY } from '@/lib/helpers';
@@ -13,7 +13,7 @@ import { SelectNative } from '@/components/ui/select-native';
 import type { Activity } from '@/types';
 
 export default function ActivityModal() {
-  const { modalOpen, setModalOpen, activities, addActivity, genId, currentProjectId, showToast } = useAppStore();
+  const { modalOpen, setModalOpen, modalDefaults, activities, addActivity, genId, currentProjectId, showToast } = useAppStore();
   const { createOne } = useApi();
 
   const [name, setName] = useState('');
@@ -28,6 +28,16 @@ export default function ActivityModal() {
   const [priority, setPriority] = useState('Normal');
   const [pct, setPct] = useState(0);
   const [notes, setNotes] = useState('');
+
+  // Apply pre-fill defaults whenever the modal opens
+  useEffect(() => {
+    if (modalOpen) {
+      if (modalDefaults.phase) setPhase(modalDefaults.phase);
+      if (modalDefaults.notes) setNotes(modalDefaults.notes);
+      if (modalDefaults.area)  setArea(modalDefaults.area);
+      if (modalDefaults.trade) setTrade(modalDefaults.trade);
+    }
+  }, [modalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dynTrades = [...new Set(activities.map((a) => a.trade).filter(Boolean))].sort();
   const dynAreas = [...new Set(activities.map((a) => a.area).filter(Boolean))].sort();
@@ -64,7 +74,14 @@ export default function ActivityModal() {
     <Dialog open={modalOpen} onOpenChange={setModalOpen}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>New Activity</DialogTitle>
+          <DialogTitle>
+            New Activity
+            {modalDefaults.notes && (
+              <span className="ml-2 text-[12px] font-normal text-muted-foreground">
+                under {modalDefaults.notes.replace('Phase: ', '')}
+              </span>
+            )}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">

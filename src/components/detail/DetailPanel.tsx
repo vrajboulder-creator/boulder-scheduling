@@ -3,7 +3,7 @@
 import { useState, useMemo, memo } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi, debouncedSave } from '@/hooks/useApi';
-import { isoDate, fmt, diffDays, isOverdue, TODAY } from '@/lib/helpers';
+import { isoDate, fmt, diffDays, addDays, isOverdue, TODAY } from '@/lib/helpers';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,8 +77,78 @@ const DetailPanelInner = memo(function DetailPanelInner({
     [activitiesRef]
   );
 
+  // BFS cascade helper — propagates date changes through the entire successor chain.
+  // For each successor: start = predecessor's finish + 1, finish = start + duration - 1.
+  // `fromFinish` is the finish date of the root activity that triggered the cascade.
+  const cascadeSuccessors = (rootId: string, rootSuccessors: string[], fromFinish: string) => {
+    if (!fromFinish) return;
+    const allActs = useAppStore.getState().activities;
+    const visited = new Set<string>([rootId]);
+    // Queue entries carry the predecessor's finish so each successor
+    // anchors its start date correctly even when delta alone is ambiguous.
+    const queue: Array<{ id: string; predFinish: string }> = rootSuccessors.map((id) => ({ id, predFinish: fromFinish }));
+    while (queue.length > 0) {
+      const { id: succId, predFinish } = queue.shift()!;
+      if (visited.has(succId)) continue;
+      visited.add(succId);
+      const succ = allActs.find((x) => x.id === succId);
+      if (!succ) continue;
+      // start = day after predecessor's finish
+      const newStart = isoDate(addDays(predFinish, 1));
+      // finish = start + own duration - 1 (duration is never changed by cascade)
+      const dur = succ.duration || 1;
+      const newFinish = isoDate(addDays(newStart, dur - 1));
+      updateActivity(succId, { start: newStart, finish: newFinish });
+      debouncedSave(() => saveOne(succId), 300, succId);
+      // Pass this successor's finish as the anchor for its own successors
+      (succ.successors || []).forEach((nextId) => {
+        if (!visited.has(nextId)) queue.push({ id: nextId, predFinish: newFinish });
+      });
+    }
+  };
+
   const update = (field: keyof Activity, value: unknown) => {
     if (!a) return;
+
+    // ── Duration change: recalculate finish = start + duration - 1, then cascade ──
+    if (field === 'duration') {
+      const dur = Math.max(1, Number(value));
+      const actUpdates: Partial<Activity> = { duration: dur };
+      if (a.start) {
+        const newFinish = isoDate(addDays(a.start, dur - 1));
+        actUpdates.finish = newFinish;
+        updateActivity(a.id, actUpdates);
+        debouncedSave(() => saveOne(a.id), 300, a.id);
+        cascadeSuccessors(a.id, a.successors || [], newFinish);
+      } else {
+        updateActivity(a.id, actUpdates);
+        debouncedSave(() => saveOne(a.id), 300, a.id);
+      }
+      return;
+    }
+
+    // ── Start change: recalculate finish = start + duration - 1, then cascade ──
+    if (field === 'start' && typeof value === 'string' && value) {
+      const newStart = value;
+      const dur = a.duration || 1;
+      const newFinish = isoDate(addDays(newStart, dur - 1));
+      updateActivity(a.id, { start: newStart, finish: newFinish, duration: dur });
+      debouncedSave(() => saveOne(a.id), 300, a.id);
+      cascadeSuccessors(a.id, a.successors || [], newFinish);
+      return;
+    }
+
+    // ── Finish change: recalculate duration = finish - start + 1, then cascade ──
+    if (field === 'finish' && typeof value === 'string' && value) {
+      const newFinish = value;
+      const newDur = a.start ? Math.max(1, diffDays(a.start, newFinish) + 1) : a.duration;
+      updateActivity(a.id, { finish: newFinish, duration: newDur });
+      debouncedSave(() => saveOne(a.id), 300, a.id);
+      cascadeSuccessors(a.id, a.successors || [], newFinish);
+      return;
+    }
+
+    // ── All other fields ─────────────────────────────────────────────────────
     updateActivity(a.id, { [field]: value } as Partial<Activity>);
     debouncedSave(() => saveOne(a.id), 300, a.id);
   };
@@ -149,7 +219,7 @@ const DetailPanelInner = memo(function DetailPanelInner({
                   <Field label="Finish"><Input type="date" value={isoDate(a.finish)} onChange={(e) => update('finish', e.target.value)} className="text-xs h-8" /></Field>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Duration"><div className="text-sm font-medium">{a.duration} days</div></Field>
+                  <Field label="Duration (days)"><Input type="number" min={1} value={a.duration} onChange={(e) => update('duration', parseInt(e.target.value) || 1)} className="text-xs h-8 w-20" /></Field>
                   <Field label="% Complete"><Input type="number" min={0} max={100} value={a.pct} onChange={(e) => quickUpdate('pct', parseInt(e.target.value))} className="text-xs h-8 w-20" /></Field>
                 </div>
                 {isOverdue(a) && <Badge variant="danger" className="mt-1">⚠ Overdue by {diffDays(a.finish, TODAY)} days</Badge>}

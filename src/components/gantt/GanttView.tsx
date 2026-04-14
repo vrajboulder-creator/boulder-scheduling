@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
-import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange } from 'lucide-react';
+import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SUBS } from '@/data/constants';
 import type { Activity } from '@/types';
@@ -17,6 +17,67 @@ const ROW_H = 28;
 const BAR_H = 20;
 const BAR_Y = 4;
 const TRADE_H = 30;
+
+// Canonical phase order — same list as ActivityTable.tsx
+const PHASE_ORDER_GANTT = [
+  'Owner Request for Proposal','Bid Preparation','Bid Submission to Owner','Notice to Proceed',
+  'Pre-Construction (2-3 months before Start)','Pre-Mobilization Requirements',
+  'Earthwork - Preconstruction','Job Mobilization','Earthwork - Site Prep',
+  'Earthwork - Rough Paving','Earthwork - Building Pad','Concrete - Building Pad Form',
+  'Plumbing - Underground','Electrical - Underground','Fire Sprinkler -  Fire Riser',
+  'Concrete - Footings to Pour','Onsite Utility Pre-Construction Meeting',
+  'Utility - Sanitary Sewer','Utility - Irrigation','Utility - Fire Line',
+  'Utility - Gas Line','Utility - Sleeves','Utility - Electrical',
+  'Earthwork - Final Grading','Concrete - Paving','CMU','Mockup Wall Started',
+  'Structural Steel','Locations Finalized for Framing, MEP Rough',
+  'Framing - 1st Floor','Framing - 2nd Floor','Framing - 3rd Floor','Framing - 4th Floor',
+  'Blocking Locations','Framing - Roof','Roof - TPO',
+  'Insulate Corridor - 1st Floor','Insulate Corridor - 2nd Floor',
+  'Insulate Corridor - 3rd Floor','Insulate Corridor - 4th Floor',
+  'Prerock Corridor and Furdown Areas - 1st Floor','Prerock Corridor and Fur Down Areas - 2nd Floor',
+  'Prerock Corridor and Fur Down Areas - 3rd Floor','Prerock Corridor and Fur Down Areas - 4th Floor',
+  'Swimming Pool Rough to Gunite','Plumbing 1st Floor Top Out','Plumbing - 2nd Floor Top Out',
+  'Plumbing - 3rd Floor Top Out','Plumbing - 4th Floor Top Out','Plumbing  - Roof Top Out',
+  'Plumbing - Outdoor Top Out (Roof / Canopy Drains)','Plumbing - Dumpster Pad / Work Shop',
+  'Gas Rough In - 1st Floor','Gas - Outdoor Rough In','Gas Line',
+  'Mechanical 1st Floor Rough','Mechanical 2nd Floor Rough In','Mechanical 3rd Floor Rough In',
+  'Mechanical 4th Floor Rough In','Mechanical Roof Rough In','Mechanical Outdoor Rough In',
+  'Fire Sprinkler 1st Floor Rough In','Fire Sprinkler 2nd Floor Rough In',
+  'Fire Sprinkler 3rd Floor Rough In','Fire Sprinkler 4th Floor Rough In',
+  'Fire Sprinkler Roof Concealed Space','Fire Sprinkler Dry System',
+  'Fire Sprinkler Stand Alone Pool Equipment / Pool Bathroom',
+  'Electrical 1st Floor Rough In','Electrical 2nd Floor Rough In',
+  'Electrical 3rd Floor Rough In','Electrical 4th Floor Rough In',
+  'Electrical Roof Rough In','Electrical Outdoor Rough In',
+  'Structured Cabling 1st Floor Rough','Structured Cabling 2nd Floor Rough',
+  'Structured Cabling 3rd Floor Rough','Structured Cabling 4th Floor Rough',
+  'Structured Cabling Roof Rough','Fire Alarm 1st Floor Rough In',
+  'Fire Alarm 2nd Floor Rough','Fire Alarm 3rd Floor Rough',
+  'Fire Alarm 4th Floor Rough','Fire Alarm Roof Rough',
+  'Insulation 1st Floor Walls / Ceilings','Insulation - 2nd Floor',
+  'Insulation - 3rd Floor','Insulation - 4th Floor',
+  'Drywall (Tape/Bed/Sand) - 1st Floor','Drywall (Tape/Bed/Sand) - 2nd Floor',
+  'Drywall (Tape/Bed/Sand) - 3rd Floor','Drywall (Tape/Bed/Sand) - 4th Floor',
+  'Swimming Pool - Finish Out','Sports Court Install','Wallpaper Corridor - 1st Floor',
+  'Tile - Flooring 1st Floor','Tile - Flooring 2nd Floor','Tile - Flooring 3rd Floor',
+  'Tile - Flooring 4th Floor','Millwork Install',
+  'Fire Sprinkler  - Trim Out 1st Floor','Fire Sprinkler - Trim Out 2nd Floor',
+  'Fire Sprinkler - Trim Out 3rd Floor','Fire Sprinkler - Trim Out 4th Floor',
+  'Fire Alarm - Trim Out 1st Floor','Fire Alarm - Trim Out 2nd Floor',
+  'Fire Alarm - Trim Out 3rd Floor','Fire Alarm - Trim Out 4th Floor',
+  'Vanity / Kitchen Cabinets Install - 4th Floor','Vanity / Kitchen Cabinets Install - 3rd Floor',
+  'Vanity / Kitchen Cabinets Install - 2nd Floor','Vanity / Kitchen Cabinets Install - 1st Floor',
+  'Vanity / Kitchen / Window Sill Granite - 4th Floor','Vanity / Kitchen / Window Sill Granite - 3rd Floor',
+  'Vanity / Kitchen / Window Sill Granite - 2nd Floor','Vanity / Kitchen / Window Sill Granite - 1st Floor',
+  'Mechanical Trim Out 1st Floor','Mechanical Trim Out 2nd Floor',
+  'Mechanical - Trim Out 3rd Floor','Mechanical - Trim Out 4th Floor',
+  'FFE Hang Install - 4th Floor','Plumbing Trim Out - 1st Floor','Plumbing Trim Out - 2nd Floor',
+  'Plumbing Trim Out - 3rd Floor','Plumbing Trim Out - 4th Floor','Gas Line Trim Out',
+  'Electrical - Signage Install','Swimming Pool',
+  'FFE Install - 4th Floor','FFE Install - 3rd Floor','FFE Install - 2nd Floor','FFE Install - 1st Floor',
+];
+const PHASE_RANK_GANTT = new Map(PHASE_ORDER_GANTT.map((p, i) => [p, i]));
+const normalizePhase = (p: string) => p.replace(/ \[TPSJ\]$/, '').trim();
 
 // ─── DATE RANGE PRESETS ───
 type DatePreset = 'all' | 'this-week' | 'this-month' | '3-months' | 'custom';
@@ -54,24 +115,95 @@ export default function GanttView() {
   const leftPanelRef = useRef<HTMLDivElement>(null);
   const dateGuideRef = useRef<HTMLDivElement>(null);
   const dateLabelRef = useRef<HTMLDivElement>(null);
+  const ganttCardRef = useRef<HTMLDivElement>(null);
   const pxDay = ganttPxPerDay;
 
   // ─── DATE RANGE STATE ───
   const [datePreset, setDatePreset] = useState<DatePreset>('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [hideUndated, setHideUndated] = useState(false);
 
   // ─── FILTERS ───
   const st = getSectionState('gantt');
 
-  // Narrow the source list with dated-only and the *current* filters.
-  // Memoized so pan/zoom/resize don't recompute O(n) work on every render.
+  const [downloading, setDownloading] = useState(false);
+  const downloadPdf = useCallback(async () => {
+    const el = ganttCardRef.current;
+    if (!el) return;
+    setDownloading(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const jsPDF = (await import('jspdf')).default;
+
+      const prevMaxH = el.style.maxHeight;
+      const prevH = el.style.height;
+      const prevOverflow = el.style.overflow;
+      el.style.maxHeight = 'none';
+      el.style.height = 'auto';
+      el.style.overflow = 'visible';
+
+      const scrollPanels = el.querySelectorAll<HTMLDivElement>('.overflow-y-auto, .overflow-auto, .overflow-x-auto');
+      const panelPrevStyles: { el: HTMLDivElement; overflow: string; maxH: string; h: string }[] = [];
+      scrollPanels.forEach((p) => {
+        panelPrevStyles.push({ el: p, overflow: p.style.overflow, maxH: p.style.maxHeight, h: p.style.height });
+        p.style.overflow = 'visible';
+        p.style.maxHeight = 'none';
+        p.style.height = 'auto';
+      });
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      const canvas = await html2canvas(el, {
+        scale: 1.5,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+
+      el.style.maxHeight = prevMaxH;
+      el.style.height = prevH;
+      el.style.overflow = prevOverflow;
+      panelPrevStyles.forEach(({ el: p, overflow, maxH, h }) => {
+        p.style.overflow = overflow;
+        p.style.maxHeight = maxH;
+        p.style.height = h;
+      });
+
+      const imgW = canvas.width;
+      const imgH = canvas.height;
+      const pdfW = 297;
+      const pdfH = Math.ceil((imgH / imgW) * pdfW);
+
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pdfW, Math.max(pdfH, 100)] });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+
+      const filterLabel = [
+        st.trade, st.area, st.status, st.phase,
+        hideUndated ? 'dated-only' : '',
+        datePreset !== 'all' ? datePreset : '',
+      ].filter(Boolean).join('_') || 'all';
+
+      pdf.save(`gantt_${filterLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      setDownloading(false);
+    }
+  }, [st, hideUndated, datePreset]);
+
   const allFiltered = useMemo(
-    () => applyFilters(activities, st, searchQuery).filter((a) => a.start || a.finish),
-    [activities, st, searchQuery]
+    () => {
+      const base = applyFilters(activities, st, searchQuery);
+      return hideUndated ? base.filter((a) => a.start || a.finish) : base;
+    },
+    [activities, st, searchQuery, hideUndated]
   );
 
-  // Apply date range filter
+  // Apply date range filter — undated activities always pass through
   const presetRange = useMemo(() => {
     if (datePreset === 'custom') {
       const from = parseDate(customFrom);
@@ -84,9 +216,11 @@ export default function GanttView() {
   const filtered = useMemo(() => {
     if (!presetRange) return allFiltered;
     return allFiltered.filter((a) => {
+      // Undated activities always show regardless of date range filter
+      if (!a.start && !a.finish) return true;
       const s = parseDate(a.start || a.finish);
       const f = parseDate(a.finish || a.start);
-      if (!s || !f) return false;
+      if (!s || !f) return true;
       return f >= presetRange.from && s <= presetRange.to;
     });
   }, [allFiltered, presetRange]);
@@ -103,23 +237,40 @@ export default function GanttView() {
   const dynStatuses = useMemo(() => [...new Set(narrowFor('status').map((a) => a.status).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const dynPhases = useMemo(() => [...new Set(narrowFor('phase').map((a) => a.phase).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Group by trade. Sort key is (start_date, sort_order, id) — sort_order
-  // is a manual tiebreaker used when two activities share a date so the
-  // user's drag-reorder survives re-renders.
+  // Group by phase in CSV order; sort within phase by sort_order then id
   const grouped = useMemo(() => {
     const g: Record<string, Activity[]> = {};
-    [...filtered].sort((a, b) => {
-      const sa = parseDate(a.start || a.finish)?.getTime() || 0;
-      const sb = parseDate(b.start || b.finish)?.getTime() || 0;
-      if (sa !== sb) return sa - sb;
-      const oa = a.sort_order ?? 0;
-      const ob = b.sort_order ?? 0;
-      if (oa !== ob) return oa - ob;
-      return a.id.localeCompare(b.id);
-    }).forEach((a) => { (g[a.trade] = g[a.trade] || []).push(a); });
+    filtered.forEach((a) => {
+      const ph = normalizePhase(a.phase || 'Other');
+      (g[ph] = g[ph] || []).push(a);
+    });
+    // Sort within each phase by sort_order then id
+    Object.values(g).forEach((arr) =>
+      arr.sort((a, b) => ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.id.localeCompare(b.id))
+    );
     return g;
   }, [filtered]);
-  const trades = useMemo(() => Object.keys(grouped), [grouped]);
+
+  // Phases sorted by canonical CSV order
+  const trades = useMemo(() =>
+    Object.keys(grouped).sort((a, b) =>
+      (PHASE_RANK_GANTT.get(a) ?? 9999) - (PHASE_RANK_GANTT.get(b) ?? 9999)
+    ),
+  [grouped]);
+
+  // Label map: activity.id → "N-X" (phase number + letter within phase)
+  const labelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    trades.forEach((phase, phaseIdx) => {
+      (grouped[phase] || []).forEach((a, actIdx) => {
+        const letter = actIdx < 26
+          ? String.fromCharCode(65 + actIdx)
+          : String.fromCharCode(65 + Math.floor(actIdx / 26) - 1) + String.fromCharCode(65 + (actIdx % 26));
+        map[a.id] = `${phaseIdx + 1}-${letter}`;
+      });
+    });
+    return map;
+  }, [trades, grouped]);
 
   // Date range for timeline. Mirror the bar-rendering logic so the timeline
   // bounds include synthesized endpoints (duration-derived) — otherwise a
@@ -136,14 +287,12 @@ export default function GanttView() {
       if (s) times.push(s.getTime());
       if (f) times.push(f.getTime());
     });
-    const has = times.length > 0;
-    const ps = has
-      ? (presetRange ? addDays(presetRange.from, -3) : addDays(new Date(Math.min(...times)), -7))
-      : TODAY;
-    const pe = has
-      ? (presetRange ? addDays(presetRange.to, 3) : addDays(new Date(Math.max(...times)), 14))
-      : addDays(TODAY, 30);
-    // totalDays is inclusive of both endpoints so the timeline fully contains projEnd.
+    // Undated activities fall back to TODAY — always treat as having data if any activities exist
+    const has = filtered.length > 0;
+    // Anchor undated-only projects at today so the timeline is still useful
+    if (times.length === 0) { times.push(TODAY.getTime()); times.push(addDays(TODAY, 30).getTime()); }
+    const ps = presetRange ? addDays(presetRange.from, -3) : addDays(new Date(Math.min(...times)), -7);
+    const pe = presetRange ? addDays(presetRange.to, 3) : addDays(new Date(Math.max(...times)), 14);
     const td = Math.max(7, diffDays(ps, pe) + 1);
     return { projStart: ps, projEnd: pe, totalDays: td, timelineW: td * pxDay, hasData: has };
   }, [filtered, presetRange, pxDay]);
@@ -635,6 +784,10 @@ export default function GanttView() {
             {ganttFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             {ganttFullscreen ? 'Exit' : 'Fullscreen'}
           </Button>
+          <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={downloadPdf} disabled={downloading}>
+            <Download className="h-3.5 w-3.5" />
+            {downloading ? 'Exporting…' : 'PDF'}
+          </Button>
           {ganttFullscreen && (
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setGanttFullscreen(false)}><X className="h-4 w-4" /></Button>
           )}
@@ -688,6 +841,20 @@ export default function GanttView() {
           )}
         </div>
 
+        <button
+          onClick={() => setHideUndated((v) => !v)}
+          className={cn(
+            'h-8 px-2.5 rounded text-xs font-medium border transition-colors flex items-center gap-1.5',
+            hideUndated
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-background text-muted-foreground border-border hover:border-primary hover:text-primary'
+          )}
+          title={hideUndated ? 'Showing dated only — click to show all' : 'Click to hide undated activities'}
+        >
+          <CalendarRange className="h-3 w-3" />
+          {hideUndated ? 'Dated Only' : 'All Records'}
+        </button>
+
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" className="h-8 text-xs gap-1 text-muted-foreground" onClick={() => { clearSectionFilters('gantt'); setDatePreset('all'); setCustomFrom(''); setCustomTo(''); }}>
             <X className="h-3 w-3" /> Clear All
@@ -701,7 +868,7 @@ export default function GanttView() {
           No dated activities to display.
         </Card>
       ) : (
-      <Card className={cn("flex overflow-hidden flex-1", ganttFullscreen ? "h-0" : "h-[500px]")}>
+      <Card ref={ganttCardRef} className={cn("flex overflow-hidden flex-1", ganttFullscreen ? "h-0" : "h-[500px]")}>
         {/* LEFT PANEL */}
         <div ref={leftPanelRef} className="w-[220px] min-w-[220px] border-r overflow-y-auto scrollbar-hide">
           <div className="h-[44px] border-b bg-muted/50 flex items-center px-3 sticky top-0 z-10 bg-card">
@@ -709,12 +876,16 @@ export default function GanttView() {
           </div>
           {rows.map((row, i) =>
             row.type === 'trade' ? (
-              <div key={`t-${i}`} className="flex items-center px-3 font-bold text-[11px] bg-muted/50 border-b border-border/50" style={{ height: TRADE_H, color: getTradeColor(row.trade) }}>
-                {row.trade} <span className="ml-1.5 text-[9px] font-normal text-muted-foreground">({grouped[row.trade].length})</span>
+              <div key={`t-${i}`} className="flex items-center px-3 font-bold text-[11px] bg-muted/50 border-b border-border/50 gap-1.5" style={{ height: TRADE_H }}>
+                <span className="font-mono text-[10px] text-muted-foreground shrink-0">
+                  {trades.indexOf(row.trade) + 1}
+                </span>
+                <span className="truncate" style={{ color: getTradeColor(grouped[row.trade]?.[0]?.trade ?? '') }}>{row.trade}</span>
+                <span className="ml-auto text-[9px] font-normal text-muted-foreground shrink-0">({grouped[row.trade].length})</span>
               </div>
             ) : (
               <div key={`a-${row.activity!.id}`} data-left-row={row.activity!.id} className="flex items-center px-3 text-[11px] cursor-pointer border-b border-border/30 hover:bg-primary/5 truncate" style={{ height: ROW_H }} onClick={() => { if (ganttSidebarOn) setSelectedActivity(row.activity!.id); }}>
-                <span className="opacity-40 font-mono text-[10px] mr-1.5 shrink-0">{row.activity!.id}</span>
+                <span className="font-mono text-[10px] text-blue-500 mr-1.5 shrink-0">{labelMap[row.activity!.id] ?? row.activity!.id}</span>
                 <span className="truncate">{row.activity!.name}</span>
               </div>
             )
@@ -813,7 +984,8 @@ export default function GanttView() {
               let f = parseDate(a.finish);
               if (s && !f) f = addDays(s, dur - 1);
               else if (f && !s) s = addDays(f, -(dur - 1));
-              if (!s || !f) return <div key={a.id} style={{ height: ROW_H }} />;
+              // Undated: place a 1-day placeholder bar at today
+              if (!s || !f) { s = TODAY; f = TODAY; }
 
               // Inclusive-of-both-endpoints convention (bug #3):
               //   1-day bar (start == finish) → 1 * pxDay wide

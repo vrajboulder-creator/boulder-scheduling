@@ -102,7 +102,7 @@ export function applyFilters(
   filters: { trade: string; area: string; status: string; phase: string; floor: string },
   searchQuery: string
 ): Activity[] {
-  return items.filter(a => {
+  const filtered = items.filter(a => {
     if (filters.trade && a.trade !== filters.trade) return false;
     if (filters.area && a.area !== filters.area) return false;
     if (filters.status && a.status !== filters.status) return false;
@@ -122,6 +122,7 @@ export function applyFilters(
     }
     return true;
   });
+  return filtered.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 }
 
 // ─── Weather code → lucide icon name + label + tailwind color class ───

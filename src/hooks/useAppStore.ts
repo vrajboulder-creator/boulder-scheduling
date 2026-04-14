@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import type { Activity, ViewType, ProjectConfig, WeatherDetail, ActivityDB, LinkedItemRef } from '@/types';
-import { isoDate, addDays, TODAY } from '@/lib/helpers';
+import { isoDate, addDays, diffDays } from '@/lib/helpers';
 import { SUBS } from '@/data/constants';
 
 interface SectionFilters {
@@ -22,6 +22,8 @@ interface AppState {
   addActivity: (a: Activity) => void;
   updateActivity: (id: string, updates: Partial<Activity>) => void;
   removeActivity: (id: string) => void;
+  linkActivities: (predecessorId: string, successorId: string) => void;
+  unlinkActivities: (predecessorId: string, successorId: string) => void;
 
   // Navigation
   currentView: ViewType;
@@ -47,6 +49,8 @@ interface AppState {
   // Modal
   modalOpen: boolean;
   setModalOpen: (open: boolean) => void;
+  modalDefaults: Partial<{ phase: string; notes: string; area: string; trade: string }>;
+  openModalWithDefaults: (defaults: Partial<{ phase: string; notes: string; area: string; trade: string }>) => void;
 
   // Search
   searchQuery: string;
@@ -77,6 +81,7 @@ interface AppState {
   // Next ID
   nextId: number;
   genId: () => string;
+  genSubtaskId: (parentId: string) => string;
 
   // Toast
   toastMessage: string;
@@ -97,6 +102,33 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   removeActivity: (id) =>
     set((s) => ({ activities: s.activities.filter((a) => a.id !== id) })),
+
+  linkActivities: (predecessorId, successorId) =>
+    set((s) => {
+      const pred = s.activities.find((a) => a.id === predecessorId);
+      const succ = s.activities.find((a) => a.id === successorId);
+      if (!pred || !succ) return s;
+      // Shift successor start to day after predecessor finish, preserving duration
+      const newStart = pred.finish ? isoDate(addDays(pred.finish, 1)) : succ.start;
+      const dur = diffDays(succ.start, succ.finish);
+      const newFinish = newStart ? isoDate(addDays(newStart, dur)) : succ.finish;
+      return {
+        activities: s.activities.map((a) => {
+          if (a.id === predecessorId) return { ...a, successors: [...(a.successors || []).filter(id => id !== successorId), successorId] };
+          if (a.id === successorId) return { ...a, predecessors: [...(a.predecessors || []).filter(id => id !== predecessorId), predecessorId], start: newStart, finish: newFinish };
+          return a;
+        }),
+      };
+    }),
+
+  unlinkActivities: (predecessorId, successorId) =>
+    set((s) => ({
+      activities: s.activities.map((a) => {
+        if (a.id === predecessorId) return { ...a, successors: (a.successors || []).filter((id) => id !== successorId) };
+        if (a.id === successorId) return { ...a, predecessors: (a.predecessors || []).filter((id) => id !== predecessorId) };
+        return a;
+      }),
+    })),
 
   currentView: 'dashboard',
   // Don't wipe sectionState — it's keyed per-view, so Delayed can stay in
@@ -130,6 +162,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   modalOpen: false,
   setModalOpen: (open) => set({ modalOpen: open }),
+  modalDefaults: {},
+  openModalWithDefaults: (defaults) => set({ modalOpen: true, modalDefaults: defaults }),
 
   searchQuery: '',
   setSearchQuery: (q) => set({ searchQuery: q }),
@@ -179,6 +213,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({ nextId: s.nextId + 1 }));
     return id;
   },
+  genSubtaskId: (parentId: string) => {
+    const existing = get().activities.filter((a) => a.parent_id === parentId).length;
+    return `${parentId}-ST-${existing + 1}`;
+  },
 
   toastMessage: '',
   showToast: (msg) => {
@@ -191,6 +229,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 export function dbToFrontend(row: ActivityDB & { _predecessors?: string[]; _successors?: string[]; _linked?: LinkedItemRef[] }): Activity {
   return {
     id: row.id,
+    project_id: row.project_id || null,
+    parent_id: row.parent_id ?? null,
     name: row.name,
     trade: row.trade || 'General / GC',
     sub: row.sub || '',
@@ -212,7 +252,6 @@ export function dbToFrontend(row: ActivityDB & { _predecessors?: string[]; _succ
     successors: row._successors || [],
     linked: row._linked || [],
     attachments: [],
-    project_id: row.project_id || null,
     sort_order: row.sort_order ?? 0,
   };
 }
@@ -238,5 +277,6 @@ export function frontendToDb(a: Activity): Record<string, unknown> {
     lookahead: a.lookahead || false,
     notes: a.notes || '',
     sort_order: a.sort_order ?? 0,
+    parent_id: a.parent_id ?? null,
   };
 }

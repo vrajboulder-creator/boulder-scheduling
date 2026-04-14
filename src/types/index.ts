@@ -23,6 +23,7 @@ export interface Project {
 export interface ActivityDB {
   id: string;
   project_id: string | null;
+  parent_id?: string | null;
   name: string;
   trade: string;
   sub: string;
@@ -47,6 +48,7 @@ export interface ActivityDB {
 export interface Activity {
   id: string;
   project_id: string | null;
+  parent_id?: string | null;
   name: string;
   trade: string;
   sub: string;

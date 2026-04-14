@@ -3,11 +3,20 @@ import type { ActivityLink } from '@/types';
 
 export const ActivityLinksDB = {
   async getAll(): Promise<ActivityLink[]> {
-    const { data, error } = await requireDb()
-      .from('activity_links')
-      .select('*');
-    if (error) throw error;
-    return data;
+    let allData: ActivityLink[] = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await requireDb()
+        .from('activity_links')
+        .select('*')
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      allData.push(...data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return allData;
   },
 
   async getForActivity(activityId: string): Promise<ActivityLink[]> {

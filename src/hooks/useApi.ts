@@ -117,7 +117,31 @@ export function useApi() {
     }
   }
 
-  return { loadAll, saveAll, saveOne, createOne, deleteOne };
+  async function addLink(predecessorId: string, successorId: string): Promise<boolean> {
+    try {
+      const resp = await fetch('/api/activity-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ predecessor_id: predecessorId, successor_id: successorId }),
+      });
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  async function removeLink(predecessorId: string, successorId: string): Promise<boolean> {
+    try {
+      // fetch all links, find the matching one, delete by id
+      const resp = await fetch('/api/activity-links');
+      if (!resp.ok) return false;
+      const links: { id: string; predecessor_id: string; successor_id: string }[] = await resp.json();
+      const link = links.find((l) => l.predecessor_id === predecessorId && l.successor_id === successorId);
+      if (!link) return false;
+      const del = await fetch(`/api/activity-links/${link.id}`, { method: 'DELETE' });
+      return del.ok;
+    } catch { return false; }
+  }
+
+  return { loadAll, saveAll, saveOne, createOne, deleteOne, addLink, removeLink };
 }
 
 // Per-key debounced save. Each activity id gets its own timer so rapid

@@ -15,12 +15,13 @@ export const ActivitiesDB = {
       let query = requireDb()
         .from('activities')
         .select('*')
-        .order('start_date')
+        .order('sort_order', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true })
         .range(from, from + pageSize - 1);
       if (projectId) query = query.eq('project_id', projectId);
       const { data, error } = await query;
       if (error) throw error;
-      allData = allData.concat(data);
+      allData.push(...data);
       if (data.length < pageSize) break;
       from += pageSize;
     }

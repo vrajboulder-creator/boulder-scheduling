@@ -11,3 +11,17 @@ out/
 build/
 dist/
 *.tsbuildinfo
+
+# playwright
+.playwright-cli/
+test-results/
+playwright-report/
+
+# graphify
+graphify-out/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
