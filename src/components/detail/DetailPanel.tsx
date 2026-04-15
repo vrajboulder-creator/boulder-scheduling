@@ -3,7 +3,7 @@
 import { useState, useMemo, memo } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi, debouncedSave } from '@/hooks/useApi';
-import { isoDate, fmt, diffDays, addDays, isOverdue, TODAY } from '@/lib/helpers';
+import { isoDate, fmt, diffDays, addDays, isOverdue, TODAY, resolveAllDates } from '@/lib/helpers';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,33 +77,92 @@ const DetailPanelInner = memo(function DetailPanelInner({
     [activitiesRef]
   );
 
-  // BFS cascade helper — propagates date changes through the entire successor chain.
-  // For each successor: start = predecessor's finish + 1, finish = start + duration - 1.
-  // `fromFinish` is the finish date of the root activity that triggered the cascade.
-  const cascadeSuccessors = (rootId: string, rootSuccessors: string[], fromFinish: string) => {
-    if (!fromFinish) return;
+  // Cascade helper — after any date change on one activity, re-resolve the full
+  // graph so every successor waits for its LATEST predecessor (multi-dep aware).
+  // `rootStart` / `rootFinish` are the NEW dates for the root activity — we
+  // inject them directly so resolveAllDates sees the updated value even before
+  // the Zustand updateActivity call has flushed to the store snapshot.
+  const cascadeSuccessors = (rootId: string, rootStart?: string | null, rootFinish?: string | null) => {
     const allActs = useAppStore.getState().activities;
-    const visited = new Set<string>([rootId]);
-    // Queue entries carry the predecessor's finish so each successor
-    // anchors its start date correctly even when delta alone is ambiguous.
-    const queue: Array<{ id: string; predFinish: string }> = rootSuccessors.map((id) => ({ id, predFinish: fromFinish }));
-    while (queue.length > 0) {
-      const { id: succId, predFinish } = queue.shift()!;
-      if (visited.has(succId)) continue;
-      visited.add(succId);
-      const succ = allActs.find((x) => x.id === succId);
-      if (!succ) continue;
-      // start = day after predecessor's finish
-      const newStart = isoDate(addDays(predFinish, 1));
-      // finish = start + own duration - 1 (duration is never changed by cascade)
-      const dur = succ.duration || 1;
-      const newFinish = isoDate(addDays(newStart, dur - 1));
-      updateActivity(succId, { start: newStart, finish: newFinish });
-      debouncedSave(() => saveOne(succId), 300, succId);
-      // Pass this successor's finish as the anchor for its own successors
-      (succ.successors || []).forEach((nextId) => {
-        if (!visited.has(nextId)) queue.push({ id: nextId, predFinish: newFinish });
-      });
+
+    // Build full link map from predecessors arrays
+    const allLinks = allActs.flatMap((act) =>
+      (act.predecessors || []).map((predId) => ({
+        id: `${predId}-${act.id}`,
+        predecessor_id: predId,
+        successor_id: act.id,
+        link_type: 'FS' as const,
+        lag_days: 0,
+      }))
+    );
+
+    // BFS — find all downstream successors of rootId (no cap)
+    const reachable = new Set<string>();
+    const bfsQ = [rootId];
+    while (bfsQ.length) {
+      const cur = bfsQ.shift()!;
+      for (const lnk of allLinks) {
+        if (lnk.predecessor_id === cur && !reachable.has(lnk.successor_id)) {
+          reachable.add(lnk.successor_id);
+          bfsQ.push(lnk.successor_id);
+        }
+      }
+    }
+
+    // Work only on the root + reachable subgraph — patch root's new dates in
+    const subgraphIds = new Set([rootId, ...reachable]);
+    const subgraph = allActs
+      .filter((a) => subgraphIds.has(a.id))
+      .map((act) =>
+        act.id === rootId
+          ? { ...act, ...(rootStart !== undefined ? { start: rootStart } : {}), ...(rootFinish !== undefined ? { finish: rootFinish } : {}) }
+          : act
+      );
+    const subLinks = allLinks.filter(
+      (l) => subgraphIds.has(l.predecessor_id) && subgraphIds.has(l.successor_id)
+    );
+
+    const resolved = resolveAllDates(subgraph, subLinks);
+
+    // Batch changed activities — update store immediately, save in one bulk call
+    const toSave: string[] = [];
+    resolved.forEach((act) => {
+      if (act.id === rootId) return;
+      const before = allActs.find((x) => x.id === act.id);
+      if (!before || (before.start === act.start && before.finish === act.finish)) return;
+      updateActivity(act.id, { start: act.start, finish: act.finish });
+      toSave.push(act.id);
+    });
+
+    // Batch per-row PATCH calls with concurrency limit — the bulk upsert route
+    // requires full rows (NOT NULL cols), so we use the partial PATCH route per id.
+    if (toSave.length > 0) {
+      debouncedSave(async () => {
+        const fresh = useAppStore.getState().activities;
+        const rows = toSave.map((id) => fresh.find((a) => a.id === id)).filter(Boolean);
+        if (rows.length === 0) return true;
+
+        const CONCURRENCY = 5;
+        let idx = 0;
+        const worker = async () => {
+          while (idx < rows.length) {
+            const a = rows[idx++]!;
+            try {
+              await fetch(`/api/activities/${a.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  start_date: a.start ?? null,
+                  finish_date: a.finish ?? null,
+                  duration: a.duration,
+                }),
+              });
+            } catch {/* ignore individual errors */}
+          }
+        };
+        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        return true;
+      }, 400, `cascade-${rootId}`);
     }
   };
 
@@ -119,7 +178,7 @@ const DetailPanelInner = memo(function DetailPanelInner({
         actUpdates.finish = newFinish;
         updateActivity(a.id, actUpdates);
         debouncedSave(() => saveOne(a.id), 300, a.id);
-        cascadeSuccessors(a.id, a.successors || [], newFinish);
+        cascadeSuccessors(a.id, a.start, newFinish);
       } else {
         updateActivity(a.id, actUpdates);
         debouncedSave(() => saveOne(a.id), 300, a.id);
@@ -134,7 +193,7 @@ const DetailPanelInner = memo(function DetailPanelInner({
       const newFinish = isoDate(addDays(newStart, dur - 1));
       updateActivity(a.id, { start: newStart, finish: newFinish, duration: dur });
       debouncedSave(() => saveOne(a.id), 300, a.id);
-      cascadeSuccessors(a.id, a.successors || [], newFinish);
+      cascadeSuccessors(a.id, newStart, newFinish);
       return;
     }
 
@@ -144,7 +203,7 @@ const DetailPanelInner = memo(function DetailPanelInner({
       const newDur = a.start ? Math.max(1, diffDays(a.start, newFinish) + 1) : a.duration;
       updateActivity(a.id, { finish: newFinish, duration: newDur });
       debouncedSave(() => saveOne(a.id), 300, a.id);
-      cascadeSuccessors(a.id, a.successors || [], newFinish);
+      cascadeSuccessors(a.id, a.start, newFinish);
       return;
     }
 

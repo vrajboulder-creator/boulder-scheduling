@@ -1,4 +1,4 @@
-import type { Activity, KPIs } from '@/types';
+import type { Activity, ActivityLink, KPIs } from '@/types';
 
 const DAY_MS = 86400000;
 
@@ -188,4 +188,94 @@ export function getTradeColor(trade: string): string {
     'Insulation': '#f59e0b',
   };
   return colors[trade] || '#6b7280';
+}
+
+// ─── Multi-dependency date resolver ──────────────────────────────────────────
+//
+// Given a flat list of activities + their links, returns a new activities array
+// where every activity with predecessors has its start/finish recalculated:
+//
+//   start  = MAX(pred.finish for all preds) + 1 day  (FS links)
+//   finish = start + duration - 1
+//
+// Uses Kahn's topological sort so predecessors are always resolved before
+// successors. Activities with no predecessors keep their existing dates.
+// Cycles are detected and skipped (those activities keep existing dates).
+//
+export function resolveAllDates(
+  activities: Activity[],
+  links: ActivityLink[],
+): Activity[] {
+  if (!links.length) return activities;
+
+  const byId = new Map<string, Activity>(activities.map((a) => [a.id, { ...a }]));
+
+  // Build adjacency: successors of each node, and in-degree count
+  const successors = new Map<string, string[]>();
+  const predecessors = new Map<string, string[]>();
+  for (const a of activities) {
+    successors.set(a.id, []);
+    predecessors.set(a.id, []);
+  }
+  for (const lnk of links) {
+    const s = successors.get(lnk.predecessor_id);
+    if (s) s.push(lnk.successor_id);
+    const p = predecessors.get(lnk.successor_id);
+    if (p) p.push(lnk.predecessor_id);
+  }
+
+  // Kahn's algorithm: start with nodes that have no predecessors
+  const inDegree = new Map<string, number>();
+  for (const a of activities) inDegree.set(a.id, (predecessors.get(a.id) || []).length);
+
+  const queue: string[] = [];
+  for (const [id, deg] of inDegree) if (deg === 0) queue.push(id);
+
+  const resolved = new Set<string>();
+
+  const processNode = (id: string) => {
+    resolved.add(id);
+    const preds = predecessors.get(id) || [];
+    if (preds.length > 0) {
+      // Find the latest finish among all predecessors (MAX logic)
+      let latestFinish: string | null = null;
+      for (const predId of preds) {
+        const pred = byId.get(predId);
+        if (!pred?.finish) continue;
+        if (!latestFinish || pred.finish > latestFinish) latestFinish = pred.finish;
+      }
+      if (latestFinish) {
+        const act = byId.get(id)!;
+        const newStart = isoDate(addDays(latestFinish, 1));
+        const dur = act.duration || 1;
+        const newFinish = isoDate(addDays(newStart, dur - 1));
+        byId.set(id, { ...act, start: newStart, finish: newFinish });
+      }
+    }
+    for (const succId of successors.get(id) || []) {
+      const deg = (inDegree.get(succId) ?? 1) - 1;
+      inDegree.set(succId, deg);
+      if (deg === 0) queue.push(succId);
+    }
+  };
+
+  while (queue.length > 0) processNode(queue.shift()!);
+
+  // Cycle fallback: any node not yet resolved is part of a cycle. Break the
+  // cycle by picking the unresolved node with the earliest stored start date
+  // (or any if dates missing), treat it as the "root" of the cycle, and
+  // process it — which will cascade to the rest of the cycle via successors.
+  while (resolved.size < activities.length) {
+    const unresolved = activities
+      .filter((a) => !resolved.has(a.id))
+      .sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+    if (unresolved.length === 0) break;
+    const next = unresolved[0].id;
+    // Force indegree to 0 so Kahn can continue
+    inDegree.set(next, 0);
+    processNode(next);
+    while (queue.length > 0) processNode(queue.shift()!);
+  }
+
+  return activities.map((a) => byId.get(a.id) ?? a);
 }

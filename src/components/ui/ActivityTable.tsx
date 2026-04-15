@@ -205,17 +205,46 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
       .slice(0, 6);
   }, [depSearch, depActivityId, allActivities]);
 
+  // Save changed activities with limited concurrency so we never flood the
+  // network when a single link shifts hundreds of downstream dates.
+  const saveChangedWithLimit = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const CONCURRENCY = 5;
+    let idx = 0;
+    const worker = async () => {
+      while (idx < ids.length) {
+        const id = ids[idx++];
+        try { await saveOne(id); } catch {/* ignore */}
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  };
+
+  const diffChangedIds = (before: Activity[], after: Activity[]): string[] => {
+    const beforeMap = new Map(before.map((a) => [a.id, a]));
+    return after
+      .filter((a) => {
+        const b = beforeMap.get(a.id);
+        return b && (b.start !== a.start || b.finish !== a.finish);
+      })
+      .map((a) => a.id);
+  };
+
   const handleAddDep = async (activityId: string, predecessorId: string) => {
+    const before = useAppStore.getState().activities;
     linkActivities(predecessorId, activityId);
     await addLink(predecessorId, activityId);
-    await saveOne(activityId);
+    const after = useAppStore.getState().activities;
+    await saveChangedWithLimit(diffChangedIds(before, after));
     setDepSearch('');
   };
 
   const handleRemoveDep = async (activityId: string, predecessorId: string) => {
+    const before = useAppStore.getState().activities;
     unlinkActivities(predecessorId, activityId);
     await removeLink(predecessorId, activityId);
-    await saveOne(activityId);
+    const after = useAppStore.getState().activities;
+    await saveChangedWithLimit(diffChangedIds(before, after));
   };
 
   const toggleActivity = (activityId: string, e: React.MouseEvent) => {

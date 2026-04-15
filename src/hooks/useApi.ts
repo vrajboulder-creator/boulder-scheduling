@@ -1,12 +1,13 @@
 'use client';
 
 import { useAppStore, dbToFrontend, frontendToDb } from './useAppStore';
+import { resolveAllDates } from '@/lib/helpers';
 import type { Activity, ActivityDB, LinkedItemRef } from '@/types';
 
 const API_BASE = '/api/activities';
 
 export function useApi() {
-  const { setActivities, activities, showToast } = useAppStore();
+  const { setActivities, activities } = useAppStore();
 
   async function loadAll(projectId?: string | null): Promise<boolean> {
     try {
@@ -21,12 +22,12 @@ export function useApi() {
       const rows: ActivityDB[] = await actResp.json();
       if (!Array.isArray(rows) || rows.length === 0) return false;
 
-      const allLinks = linksResp.ok ? await linksResp.json() : [];
+      const allLinks: { id: string; predecessor_id: string; successor_id: string; link_type: string; lag_days: number }[] = linksResp.ok ? await linksResp.json() : [];
       const allItems = itemsResp.ok ? await itemsResp.json() : [];
 
       const predMap: Record<string, string[]> = {};
       const succMap: Record<string, string[]> = {};
-      allLinks.forEach((l: { predecessor_id: string; successor_id: string }) => {
+      allLinks.forEach((l) => {
         if (!succMap[l.predecessor_id]) succMap[l.predecessor_id] = [];
         succMap[l.predecessor_id].push(l.successor_id);
         if (!predMap[l.successor_id]) predMap[l.successor_id] = [];
@@ -49,7 +50,18 @@ export function useApi() {
         return dbToFrontend(enriched);
       });
 
-      setActivities(mapped);
+      // Resolve all dates against the full link graph so every activity that
+      // has multiple predecessors starts after the latest one finishes.
+      const typedLinks = allLinks.map((l) => ({
+        id: l.id,
+        predecessor_id: l.predecessor_id,
+        successor_id: l.successor_id,
+        link_type: l.link_type as 'FS' | 'FF' | 'SS' | 'SF',
+        lag_days: l.lag_days,
+      }));
+      const resolved = resolveAllDates(mapped, typedLinks);
+
+      setActivities(resolved);
       return true;
     } catch (e) {
       console.warn('API load failed:', (e as Error).message);

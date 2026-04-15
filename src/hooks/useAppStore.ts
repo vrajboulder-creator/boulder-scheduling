@@ -3,8 +3,8 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import type { Activity, ViewType, ProjectConfig, WeatherDetail, ActivityDB, LinkedItemRef } from '@/types';
-import { isoDate, addDays, diffDays } from '@/lib/helpers';
-import { SUBS } from '@/data/constants';
+import { isoDate, resolveAllDates } from '@/lib/helpers';
+import type { ActivityLink } from '@/types';
 
 interface SectionFilters {
   mode: 'list' | 'grid';
@@ -108,27 +108,48 @@ export const useAppStore = create<AppState>((set, get) => ({
       const pred = s.activities.find((a) => a.id === predecessorId);
       const succ = s.activities.find((a) => a.id === successorId);
       if (!pred || !succ) return s;
-      // Shift successor start to day after predecessor finish, preserving duration
-      const newStart = pred.finish ? isoDate(addDays(pred.finish, 1)) : succ.start;
-      const dur = diffDays(succ.start, succ.finish);
-      const newFinish = newStart ? isoDate(addDays(newStart, dur)) : succ.finish;
-      return {
-        activities: s.activities.map((a) => {
-          if (a.id === predecessorId) return { ...a, successors: [...(a.successors || []).filter(id => id !== successorId), successorId] };
-          if (a.id === successorId) return { ...a, predecessors: [...(a.predecessors || []).filter(id => id !== predecessorId), predecessorId], start: newStart, finish: newFinish };
-          return a;
-        }),
-      };
+
+      // First wire up the predecessor/successor arrays
+      const wired = s.activities.map((a) => {
+        if (a.id === predecessorId) return { ...a, successors: [...(a.successors || []).filter(id => id !== successorId), successorId] };
+        if (a.id === successorId) return { ...a, predecessors: [...(a.predecessors || []).filter(id => id !== predecessorId), predecessorId] };
+        return a;
+      });
+
+      // Build a link list from the updated predecessors/successors arrays so
+      // resolveAllDates sees the full multi-predecessor graph
+      const links: ActivityLink[] = [];
+      for (const a of wired) {
+        for (const predId of a.predecessors || []) {
+          links.push({ id: `${predId}-${a.id}`, predecessor_id: predId, successor_id: a.id, link_type: 'FS', lag_days: 0 });
+        }
+      }
+
+      return { activities: resolveAllDates(wired, links) };
     }),
 
   unlinkActivities: (predecessorId, successorId) =>
-    set((s) => ({
-      activities: s.activities.map((a) => {
+    set((s) => {
+      // Remove the link from both sides
+      const unwired = s.activities.map((a) => {
         if (a.id === predecessorId) return { ...a, successors: (a.successors || []).filter((id) => id !== successorId) };
         if (a.id === successorId) return { ...a, predecessors: (a.predecessors || []).filter((id) => id !== predecessorId) };
         return a;
-      }),
-    })),
+      });
+
+      // Re-resolve dates with the link removed — if the successor still has
+      // other predecessors, it waits for the latest remaining one; if it has
+      // none left, resolveAllDates leaves its dates untouched (falls back to
+      // whatever was stored, i.e. its original/manually-set date).
+      const links: ActivityLink[] = [];
+      for (const a of unwired) {
+        for (const predId of a.predecessors || []) {
+          links.push({ id: `${predId}-${a.id}`, predecessor_id: predId, successor_id: a.id, link_type: 'FS', lag_days: 0 });
+        }
+      }
+
+      return { activities: resolveAllDates(unwired, links) };
+    }),
 
   currentView: 'dashboard',
   // Don't wipe sectionState — it's keyed per-view, so Delayed can stay in

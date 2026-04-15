@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3000/api/activity-links)",
+      "Bash(npx playwright *)",
+      "Bash(curl -s \"http://localhost:3000/api/activities\")",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s \"http://localhost:3000/api/activities/CSV-TPSJ-0002\")",
+      "Bash(curl -s \"http://localhost:3000/api/activities/CSV-TPSJ-0003\")",
+      "Bash(curl -s \"http://localhost:3000/api/activity-links\")",
+      "Bash(curl -s \"http://localhost:3000/api/activities/CSV-TPSJ-0001\")",
+      "Bash(python3 -c \"import json,sys; r=json.load\\(sys.stdin\\); print\\('start:', r.get\\('start_date'\\), 'finish:', r.get\\('finish_date'\\)\\)\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/activities/bulk/save -H \"Content-Type: application/json\" -d '[{\"id\":\"CSV-TPSJ-0002\",\"start_date\":\"2026-07-14\",\"finish_date\":\"2026-07-16\",\"duration\":3}]')",
+      "Bash(curl -s http://localhost:3000/api/activities/CSV-TPSJ-0002)",
+      "Bash(python3 -c \"import json,sys; r=json.load\\(sys.stdin\\); print\\('2-A dur:', r['duration'], 'finish:', r['finish_date']\\)\")",
+      "Bash(curl -s -X PATCH http://localhost:3000/api/activities/CSV-TPSJ-0001 -H \"Content-Type: application/json\" -d '{\"start_date\":\"2026-04-15\",\"finish_date\":\"2026-04-16\",\"duration\":2}')",
+      "Bash(curl -s -X PATCH http://localhost:3000/api/activities/CSV-TPSJ-0002 -H \"Content-Type: application/json\" -d '{\"start_date\":\"2026-04-15\",\"finish_date\":\"2026-04-17\",\"duration\":3}')",
+      "Bash(curl -s -X PATCH http://localhost:3000/api/activities/CSV-TPSJ-0003 -H \"Content-Type: application/json\" -d '{\"start_date\":\"2026-04-18\",\"finish_date\":\"2026-04-18\",\"duration\":1}')",
+      "Bash(curl -s http://localhost:3000/api/activities/CSV-TPSJ-0001)",
+      "Bash(python3 -c \"import json,sys; r=json.load\\(sys.stdin\\); print\\('1-A:', r['start_date'], '->', r['finish_date'], 'dur:', r['duration']\\)\")",
+      "Bash(python3 -c \"import json,sys; r=json.load\\(sys.stdin\\); print\\('2-A:', r['start_date'], '->', r['finish_date'], 'dur:', r['duration']\\)\")",
+      "Bash(curl -s http://localhost:3000/api/activities/CSV-TPSJ-0003)",
+      "Bash(python3 -c \"import json,sys; r=json.load\\(sys.stdin\\); print\\('2-B:', r['start_date'], '->', r['finish_date'], 'dur:', r['duration']\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000 --max-time 3)"
+    ]
+  }
+}
