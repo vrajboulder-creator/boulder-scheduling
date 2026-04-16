@@ -213,6 +213,8 @@ export function resolveAllDates(
   // Build adjacency: successors of each node, and in-degree count
   const successors = new Map<string, string[]>();
   const predecessors = new Map<string, string[]>();
+  // Map `${predId}->${succId}` → { link_type, lag_days } for fast lookup
+  const linkMeta = new Map<string, { link_type: 'FS' | 'FF' | 'SS' | 'SF'; lag_days: number }>();
   for (const a of activities) {
     successors.set(a.id, []);
     predecessors.set(a.id, []);
@@ -222,6 +224,10 @@ export function resolveAllDates(
     if (s) s.push(lnk.successor_id);
     const p = predecessors.get(lnk.successor_id);
     if (p) p.push(lnk.predecessor_id);
+    linkMeta.set(`${lnk.predecessor_id}->${lnk.successor_id}`, {
+      link_type: lnk.link_type || 'FS',
+      lag_days: lnk.lag_days || 0,
+    });
   }
 
   // Kahn's algorithm: start with nodes that have no predecessors
@@ -237,19 +243,54 @@ export function resolveAllDates(
     resolved.add(id);
     const preds = predecessors.get(id) || [];
     if (preds.length > 0) {
-      // Find the latest finish among all predecessors (MAX logic)
+      const act = byId.get(id)!;
+      const dur = act.duration || 1;
+      // For each predecessor, compute the CONSTRAINT it places on this task
+      // based on link type + lag. Track latest start constraint (MAX) and
+      // latest finish constraint separately — finish-based constraints derive
+      // the start by subtracting duration.
+      //
+      // Cycle-stability: if a predecessor is NOT yet resolved, skip it. Using
+      // its stored date (from the previous resolver run) causes the cycle
+      // dates to drift forward every time the resolver runs.
+      let latestStart: string | null = null;
       let latestFinish: string | null = null;
       for (const predId of preds) {
         const pred = byId.get(predId);
-        if (!pred?.finish) continue;
-        if (!latestFinish || pred.finish > latestFinish) latestFinish = pred.finish;
+        if (!pred) continue;
+        if (!resolved.has(predId)) continue;
+        const meta = linkMeta.get(`${predId}->${id}`) || { link_type: 'FS' as const, lag_days: 0 };
+        const lag = meta.lag_days || 0;
+        let constrainedStart: string | null = null;
+        let constrainedFinish: string | null = null;
+        switch (meta.link_type) {
+          case 'FS': // Successor start = pred finish + 1 + lag
+            if (pred.finish) constrainedStart = isoDate(addDays(pred.finish, 1 + lag));
+            break;
+          case 'SS': // Successor start = pred start + lag
+            if (pred.start) constrainedStart = isoDate(addDays(pred.start, lag));
+            break;
+          case 'FF': // Successor finish = pred finish + lag
+            if (pred.finish) constrainedFinish = isoDate(addDays(pred.finish, lag));
+            break;
+          case 'SF': // Successor finish = pred start + lag
+            if (pred.start) constrainedFinish = isoDate(addDays(pred.start, lag));
+            break;
+        }
+        if (constrainedStart && (!latestStart || constrainedStart > latestStart)) latestStart = constrainedStart;
+        if (constrainedFinish && (!latestFinish || constrainedFinish > latestFinish)) latestFinish = constrainedFinish;
       }
+      // Reconcile start- and finish-based constraints. Start derived from
+      // finish = finish - (dur - 1). Pick the later of the two starts so BOTH
+      // constraints are satisfied.
+      let finalStart = latestStart;
       if (latestFinish) {
-        const act = byId.get(id)!;
-        const newStart = isoDate(addDays(latestFinish, 1));
-        const dur = act.duration || 1;
-        const newFinish = isoDate(addDays(newStart, dur - 1));
-        byId.set(id, { ...act, start: newStart, finish: newFinish });
+        const startFromFinish = isoDate(addDays(latestFinish, -(dur - 1)));
+        if (!finalStart || startFromFinish > finalStart) finalStart = startFromFinish;
+      }
+      if (finalStart) {
+        const finalFinish = isoDate(addDays(finalStart, dur - 1));
+        byId.set(id, { ...act, start: finalStart, finish: finalFinish });
       }
     }
     for (const succId of successors.get(id) || []) {

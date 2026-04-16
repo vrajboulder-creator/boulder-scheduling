@@ -42,4 +42,15 @@ export const ActivityLinksDB = {
     const { error } = await requireDb().from('activity_links').delete().eq('id', id);
     if (error) throw error;
   },
+
+  async update(id: string, updates: Partial<ActivityLink>): Promise<ActivityLink> {
+    const { data, error } = await requireDb()
+      .from('activity_links')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
 };

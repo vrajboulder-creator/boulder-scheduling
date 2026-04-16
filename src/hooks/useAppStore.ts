@@ -18,12 +18,15 @@ interface SectionFilters {
 interface AppState {
   // Core data
   activities: Activity[];
+  activityLinks: ActivityLink[];
   setActivities: (acts: Activity[]) => void;
+  setActivityLinks: (links: ActivityLink[]) => void;
   addActivity: (a: Activity) => void;
   updateActivity: (id: string, updates: Partial<Activity>) => void;
   removeActivity: (id: string) => void;
-  linkActivities: (predecessorId: string, successorId: string) => void;
+  linkActivities: (predecessorId: string, successorId: string, linkType?: 'FS' | 'FF' | 'SS' | 'SF', lagDays?: number) => void;
   unlinkActivities: (predecessorId: string, successorId: string) => void;
+  updateLinkType: (predecessorId: string, successorId: string, linkType: 'FS' | 'FF' | 'SS' | 'SF') => void;
 
   // Navigation
   currentView: ViewType;
@@ -94,7 +97,9 @@ const defaultFilters = (): SectionFilters => ({
 
 export const useAppStore = create<AppState>((set, get) => ({
   activities: [],
+  activityLinks: [],
   setActivities: (acts) => set({ activities: acts }),
+  setActivityLinks: (links) => set({ activityLinks: links }),
   addActivity: (a) => set((s) => ({ activities: [...s.activities, a] })),
   updateActivity: (id, updates) =>
     set((s) => ({
@@ -103,52 +108,46 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeActivity: (id) =>
     set((s) => ({ activities: s.activities.filter((a) => a.id !== id) })),
 
-  linkActivities: (predecessorId, successorId) =>
+  linkActivities: (predecessorId, successorId, linkType = 'FS', lagDays = 0) =>
     set((s) => {
       const pred = s.activities.find((a) => a.id === predecessorId);
       const succ = s.activities.find((a) => a.id === successorId);
       if (!pred || !succ) return s;
 
-      // First wire up the predecessor/successor arrays
       const wired = s.activities.map((a) => {
         if (a.id === predecessorId) return { ...a, successors: [...(a.successors || []).filter(id => id !== successorId), successorId] };
         if (a.id === successorId) return { ...a, predecessors: [...(a.predecessors || []).filter(id => id !== predecessorId), predecessorId] };
         return a;
       });
 
-      // Build a link list from the updated predecessors/successors arrays so
-      // resolveAllDates sees the full multi-predecessor graph
-      const links: ActivityLink[] = [];
-      for (const a of wired) {
-        for (const predId of a.predecessors || []) {
-          links.push({ id: `${predId}-${a.id}`, predecessor_id: predId, successor_id: a.id, link_type: 'FS', lag_days: 0 });
-        }
-      }
+      // Merge new link into activityLinks (replace if same pair exists)
+      const newLinks: ActivityLink[] = [
+        ...s.activityLinks.filter((l) => !(l.predecessor_id === predecessorId && l.successor_id === successorId)),
+        { id: `${predecessorId}-${successorId}`, predecessor_id: predecessorId, successor_id: successorId, link_type: linkType, lag_days: lagDays },
+      ];
 
-      return { activities: resolveAllDates(wired, links) };
+      return { activities: resolveAllDates(wired, newLinks), activityLinks: newLinks };
     }),
 
   unlinkActivities: (predecessorId, successorId) =>
     set((s) => {
-      // Remove the link from both sides
       const unwired = s.activities.map((a) => {
         if (a.id === predecessorId) return { ...a, successors: (a.successors || []).filter((id) => id !== successorId) };
         if (a.id === successorId) return { ...a, predecessors: (a.predecessors || []).filter((id) => id !== predecessorId) };
         return a;
       });
+      const newLinks = s.activityLinks.filter((l) => !(l.predecessor_id === predecessorId && l.successor_id === successorId));
+      return { activities: resolveAllDates(unwired, newLinks), activityLinks: newLinks };
+    }),
 
-      // Re-resolve dates with the link removed — if the successor still has
-      // other predecessors, it waits for the latest remaining one; if it has
-      // none left, resolveAllDates leaves its dates untouched (falls back to
-      // whatever was stored, i.e. its original/manually-set date).
-      const links: ActivityLink[] = [];
-      for (const a of unwired) {
-        for (const predId of a.predecessors || []) {
-          links.push({ id: `${predId}-${a.id}`, predecessor_id: predId, successor_id: a.id, link_type: 'FS', lag_days: 0 });
-        }
-      }
-
-      return { activities: resolveAllDates(unwired, links) };
+  updateLinkType: (predecessorId, successorId, linkType) =>
+    set((s) => {
+      const newLinks = s.activityLinks.map((l) =>
+        l.predecessor_id === predecessorId && l.successor_id === successorId
+          ? { ...l, link_type: linkType }
+          : l
+      );
+      return { activities: resolveAllDates(s.activities, newLinks), activityLinks: newLinks };
     }),
 
   currentView: 'dashboard',

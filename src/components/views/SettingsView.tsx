@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SelectNative } from '@/components/ui/select-native';
 import { Slider } from '@/components/ui/slider';
-import { Settings2, Folder, LayoutGrid, Calendar, MapPin, CloudSun, Trash2, Thermometer, Wind, Droplets } from 'lucide-react';
+import { Settings2, Folder, LayoutGrid, Calendar, MapPin, CloudSun, Trash2, Thermometer, Wind, Droplets, BookOpen, Link2 } from 'lucide-react';
 import { WeatherIcon } from '@/components/ui/WeatherCard';
 import { fmt } from '@/lib/helpers';
 
@@ -162,6 +162,67 @@ export default function SettingsView() {
         </FormField>
       </SettingSection>
 
+      {/* ── User Manual ── */}
+      <SettingSection icon={<BookOpen className="h-3.5 w-3.5" />} title="User Manual — How to Use">
+        <div className="space-y-4 text-[12px] leading-relaxed text-foreground/90">
+          <ManualBlock title="Activity dates">
+            <p>Each activity has a <b>Start</b> and <b>Finish</b> date plus a <b>Duration</b>. Edit any one and the others recalc: Finish = Start + Duration − 1.</p>
+          </ManualBlock>
+
+          <ManualBlock title="Adding a predecessor (dependency)">
+            <ol className="list-decimal ml-4 space-y-1">
+              <li>Open <b>Master Schedule</b> and expand a phase.</li>
+              <li>In the <b>Predecessor</b> column of any row, click <b>+ Edit</b> (or <b>+ Add</b>).</li>
+              <li>Search by activity name and click to pick one. A pill appears with the predecessor&apos;s label (e.g. <span className="font-mono bg-blue-50 px-1 rounded">2-A</span>).</li>
+              <li>The successor&apos;s Start date automatically shifts to (latest predecessor finish + 1).</li>
+              <li>Click the <b>×</b> on any pill to remove that dependency.</li>
+            </ol>
+          </ManualBlock>
+
+          <ManualBlock title="Multi-dependency (MAX logic)" icon={<Link2 className="h-3 w-3" />}>
+            <p>When a task has multiple predecessors, it waits for the <b>latest one</b>:</p>
+            <pre className="bg-muted/50 p-2 rounded text-[11px] font-mono mt-1">start = MAX(pred.finish for all preds) + 1
+finish = start + duration − 1</pre>
+            <p className="mt-1">Adding a predecessor whose finish is <i>earlier</i> than an existing one won&apos;t change the date — that&apos;s normal. To see a jump, the new predecessor must finish <i>later</i>.</p>
+          </ManualBlock>
+
+          <ManualBlock title="Link types (FS / SS / FF / SF)">
+            <p>Each pill has a small badge showing its link type. <b>Click the badge to cycle</b> through the four types:</p>
+            <table className="w-full text-[11px] mt-2 border-collapse">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="py-1 pr-2 font-semibold">Type</th>
+                  <th className="py-1 pr-2 font-semibold">Meaning</th>
+                  <th className="py-1 pr-2 font-semibold">Effect</th>
+                </tr>
+              </thead>
+              <tbody className="text-muted-foreground">
+                <tr className="border-b"><td className="py-1 pr-2 font-mono text-amber-700"><b>FS</b></td><td className="py-1 pr-2">Finish-to-Start (default)</td><td className="py-1 pr-2">Successor starts the day after predecessor finishes.</td></tr>
+                <tr className="border-b"><td className="py-1 pr-2 font-mono text-amber-700"><b>SS</b></td><td className="py-1 pr-2">Start-to-Start</td><td className="py-1 pr-2">Both tasks start on the same day.</td></tr>
+                <tr className="border-b"><td className="py-1 pr-2 font-mono text-amber-700"><b>FF</b></td><td className="py-1 pr-2">Finish-to-Finish</td><td className="py-1 pr-2">Both tasks finish on the same day.</td></tr>
+                <tr><td className="py-1 pr-2 font-mono text-amber-700"><b>SF</b></td><td className="py-1 pr-2">Start-to-Finish (rare)</td><td className="py-1 pr-2">Successor finishes when predecessor starts.</td></tr>
+              </tbody>
+            </table>
+          </ManualBlock>
+
+          <ManualBlock title="Cascade">
+            <p>When a predecessor&apos;s dates change, <b>every downstream task</b> shifts automatically (including multi-level chains). Like dominoes falling in order.</p>
+          </ManualBlock>
+
+          <ManualBlock title="Cycles">
+            <p>If you create a circular dependency (A → B → A), the system breaks it by picking the earliest stored start in the cycle and resolving outward. Dates still cascade but the cycle is logically inconsistent — remove one of the links to clean up.</p>
+          </ManualBlock>
+
+          <ManualBlock title="Tips">
+            <ul className="list-disc ml-4 space-y-1">
+              <li>Click a row to open the detail panel. Edit dates there — cascade fires instantly.</li>
+              <li>Drag Gantt bars to reschedule; connected tasks follow.</li>
+              <li>Filters don&apos;t affect date calculations — the full graph always resolves.</li>
+            </ul>
+          </ManualBlock>
+        </div>
+      </SettingSection>
+
       {/* ── Danger / Utilities ── */}
       <SettingSection icon={<Trash2 className="h-3.5 w-3.5" />} title="Utilities">
         <Button
@@ -224,6 +285,18 @@ function InfoRow({ label, value, mono }: { label: string; value: string; mono?: 
     <div className="flex items-baseline gap-2">
       <span className="text-[11px] text-muted-foreground min-w-[70px]">{label}</span>
       <span className={mono ? 'font-mono text-[11px] truncate' : 'font-medium truncate'}>{value}</span>
+    </div>
+  );
+}
+
+function ManualBlock({ title, children, icon }: { title: string; children: React.ReactNode; icon?: React.ReactNode }) {
+  return (
+    <div className="border-l-2 border-primary/30 pl-3">
+      <div className="flex items-center gap-1.5 mb-1 text-primary">
+        {icon}
+        <h4 className="text-[11px] font-bold uppercase tracking-wider">{title}</h4>
+      </div>
+      <div className="text-foreground/80">{children}</div>
     </div>
   );
 }

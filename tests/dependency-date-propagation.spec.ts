@@ -76,7 +76,7 @@ test.describe('Dependency date propagation', () => {
     const succRow = () => page.locator('tr', { hasText: 'Subcontractor + Vendor Bids Needed' }).first();
 
     // 1. Record current successor start (should be Apr 18 after reset + load)
-    const startBefore = await succRow().locator('td').nth(5).innerText();
+    const startBefore = await succRow().locator('td').nth(6).innerText();
     console.log('Successor start BEFORE finish change:', startBefore);
 
     // 2. Open predecessor and push finish forward by 10 days (Apr 17 → Apr 27)
@@ -101,7 +101,7 @@ test.describe('Dependency date propagation', () => {
     }
 
     // 4. Successor must now start Apr 28 (day after new pred finish Apr 27)
-    const startAfter = await succRow().locator('td').nth(5).innerText();
+    const startAfter = await succRow().locator('td').nth(6).innerText();
     console.log('Successor start AFTER finish change:', startAfter);
 
     expect(startAfter).not.toBe(startBefore);
@@ -124,7 +124,7 @@ test.describe('Dependency date propagation', () => {
   });
 
   test('all phases show in CSV order', async ({ page }) => {
-    const phaseHeaders = page.locator('td[colspan="10"] .font-semibold');
+    const phaseHeaders = page.locator('td[colspan="11"] .font-semibold');
     const texts = await phaseHeaders.allInnerTexts();
     const phases = texts.filter(t => t.trim() && !t.match(/^\d+$/));
     console.log('First 5 phases:', phases.slice(0, 5));
@@ -143,7 +143,7 @@ test.describe('Dependency date propagation', () => {
     const succRow = () => page.locator('tr', { hasText: 'Subcontractor + Vendor Bids Needed' }).first();
 
     // ── Step 1: Read the successor's ORIGINAL stored start date ──────────────
-    const originalStartText = await succRow().locator('td').nth(5).innerText();
+    const originalStartText = await succRow().locator('td').nth(6).innerText();
     console.log('Successor original start:', originalStartText);
 
     // ── Step 2: Push predecessor finish far forward (Apr 17 → Jun 30) ─────────
@@ -167,7 +167,7 @@ test.describe('Dependency date propagation', () => {
     }
 
     // ── Step 3: Confirm cascade pushed successor to Jul 1 ─────────────────────
-    const startAfterLink = await succRow().locator('td').nth(5).innerText();
+    const startAfterLink = await succRow().locator('td').nth(6).innerText();
     console.log('Successor start WITH predecessor linked:', startAfterLink);
     expect(startAfterLink).toContain('Jul 1');
 
@@ -203,7 +203,7 @@ test.describe('Dependency date propagation', () => {
     await page.getByText('Bid Preparation').click();
     await page.waitForSelector('text=Subcontractor + Vendor Bids Needed', { timeout: 5000 });
 
-    const startAfterUnlink = await succRow().locator('td').nth(5).innerText();
+    const startAfterUnlink = await succRow().locator('td').nth(6).innerText();
     console.log('Successor start AFTER dependency removed:', startAfterUnlink);
 
     // With no predecessor, resolveAllDates leaves the successor's stored date untouched.
@@ -250,7 +250,7 @@ test.describe('Dependency date propagation', () => {
     //   1-A Apr 16 → 2-A starts Apr 17, finishes Apr 19 (dur=3)
     //   2-B has 2 preds: 1-A (Apr 16) and 2-A (Apr 19) → MAX is Apr 19
     //   2-B starts Apr 20
-    const startWithBoth = await succRow().locator('td').nth(5).innerText();
+    const startWithBoth = await succRow().locator('td').nth(6).innerText();
     console.log('Successor with both preds (2-A latest after cascade):', startWithBoth);
     expect(startWithBoth).toContain('Apr 20');
 
@@ -265,7 +265,7 @@ test.describe('Dependency date propagation', () => {
     // gets pushed too. resolveAllDates handles this via topological order:
     //   1-A Nov 30 → 2-A starts Dec 1, finishes Dec 3 (3d dur)
     //   2-B = MAX(1-A Nov 30, 2-A Dec 3) + 1 = Dec 4
-    const startWith1ALatest = await succRow().locator('td').nth(5).innerText();
+    const startWith1ALatest = await succRow().locator('td').nth(6).innerText();
     console.log('Successor with 1-A pushed (2-A cascaded):', startWith1ALatest);
     expect(startWith1ALatest).toContain('Dec 4');
 
@@ -303,7 +303,7 @@ test.describe('Dependency date propagation', () => {
 
     const succRow = () => page.locator('tr', { hasText: 'Subcontractor + Vendor Bids Needed' }).first();
 
-    const startBefore = await succRow().locator('td').nth(5).innerText();
+    const startBefore = await succRow().locator('td').nth(6).innerText();
     console.log('2-B start BEFORE adding 1-A as 2nd pred:', startBefore);
     expect(startBefore).toContain('Apr 18');
 
@@ -320,7 +320,7 @@ test.describe('Dependency date propagation', () => {
     await page.getByText('Bid Preparation').click();
     await page.waitForSelector('text=Subcontractor + Vendor Bids Needed', { timeout: 5000 });
 
-    const startAfter = await succRow().locator('td').nth(5).innerText();
+    const startAfter = await succRow().locator('td').nth(6).innerText();
     console.log('2-B start AFTER adding 1-A (finish Jun 30):', startAfter);
 
     // MAX(2-A Apr 17, 1-A Jun 30) + 1 = Jul 1
@@ -356,7 +356,7 @@ test.describe('Dependency date propagation', () => {
     await page.waitForSelector('text=Subcontractor + Vendor Bids Needed', { timeout: 5000 });
 
     const succRow = () => page.locator('tr', { hasText: 'Subcontractor + Vendor Bids Needed' }).first();
-    const startBefore = await succRow().locator('td').nth(5).innerText();
+    const startBefore = await succRow().locator('td').nth(6).innerText();
     console.log('2-B start BEFORE UI dropdown add:', startBefore);
     expect(startBefore).toContain('Apr 18');
 
@@ -381,7 +381,7 @@ test.describe('Dependency date propagation', () => {
     if (count > 0) await resultBtns.first().click();
 
     await page.waitForTimeout(2000);
-    const startAfter = await succRow().locator('td').nth(5).innerText();
+    const startAfter = await succRow().locator('td').nth(6).innerText();
     console.log('2-B start AFTER UI dropdown add (NO reload):', startAfter);
 
     // Cleanup

@@ -191,8 +191,9 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
   const setSelectedActivity = useAppStore((s) => s.setSelectedActivity);
   const openModalWithDefaults = useAppStore((s) => s.openModalWithDefaults);
   const allActivities = useAppStore((s) => s.activities);
-  const { addActivity, genId, genSubtaskId, currentProjectId, linkActivities, unlinkActivities } = useAppStore();
-  const { createOne, addLink, removeLink, saveOne } = useApi();
+  const activityLinks = useAppStore((s) => s.activityLinks);
+  const { addActivity, genId, genSubtaskId, currentProjectId, linkActivities, unlinkActivities, updateLinkType } = useAppStore();
+  const { createOne, addLink, removeLink, saveOne, updateLinkType: apiUpdateLinkType } = useApi();
 
   const depResults = useMemo(() => {
     if (!depActivityId || !depSearch.trim()) return [];
@@ -245,6 +246,23 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
     await removeLink(predecessorId, activityId);
     const after = useAppStore.getState().activities;
     await saveChangedWithLimit(diffChangedIds(before, after));
+  };
+
+  // Cycle FS → SS → FF → SF → FS on click
+  const LINK_CYCLE: Array<'FS' | 'SS' | 'FF' | 'SF'> = ['FS', 'SS', 'FF', 'SF'];
+  const handleCycleLinkType = async (activityId: string, predecessorId: string, currentType: 'FS' | 'SS' | 'FF' | 'SF') => {
+    const before = useAppStore.getState().activities;
+    const idx = LINK_CYCLE.indexOf(currentType);
+    const nextType = LINK_CYCLE[(idx + 1) % LINK_CYCLE.length];
+    updateLinkType(predecessorId, activityId, nextType);
+    await apiUpdateLinkType(predecessorId, activityId, nextType);
+    const after = useAppStore.getState().activities;
+    await saveChangedWithLimit(diffChangedIds(before, after));
+  };
+
+  const getLinkType = (predId: string, succId: string): 'FS' | 'SS' | 'FF' | 'SF' => {
+    const link = activityLinks.find((l) => l.predecessor_id === predId && l.successor_id === succId);
+    return (link?.link_type as 'FS' | 'SS' | 'FF' | 'SF') || 'FS';
   };
 
   const toggleActivity = (activityId: string, e: React.MouseEvent) => {
@@ -467,6 +485,7 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">ID</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Activity / Sub-Task</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Predecessor</th>
+              <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell" title="Link Types: FS=Finish-to-Start, SS=Start-to-Start, FF=Finish-to-Finish, SF=Start-to-Finish">Link Type</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Trade</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hidden lg:table-cell">Area</th>
               <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Start</th>
@@ -492,7 +511,7 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
                     <td className="px-3 py-2.5 font-mono text-[10px] text-muted-foreground/50">
                       {phaseIdx + 1}
                     </td>
-                    <td className="px-3 py-2.5" colSpan={10}>
+                    <td className="px-3 py-2.5" colSpan={11}>
                       <div className="flex items-center gap-2">
                         <ChevronRight
                           className={cn(
@@ -583,23 +602,32 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
                             onClick={(e) => e.stopPropagation()}
                             ref={predDropdownId === a.id ? predDropdownRef : undefined}
                           >
-                            {/* Show existing predecessor labels as removable pills */}
+                            {/* Show existing predecessor labels as removable pills with link type badge */}
                             <div className="flex flex-wrap gap-0.5 mb-0.5">
-                              {(a.predecessors || []).map((pid) => (
-                                <span
-                                  key={pid}
-                                  className="inline-flex items-center gap-0.5 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5 font-mono"
-                                  title={allActivities.find((x) => x.id === pid)?.name ?? pid}
-                                >
-                                  {labelMap[pid] ?? pid}
-                                  <button
-                                    onClick={() => handleRemoveDep(a.id, pid)}
-                                    className="ml-0.5 hover:text-red-500 transition-colors"
+                              {(a.predecessors || []).map((pid) => {
+                                const lt = getLinkType(pid, a.id);
+                                return (
+                                  <span
+                                    key={pid}
+                                    className="inline-flex items-center gap-0.5 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1 py-0.5 font-mono"
+                                    title={`${allActivities.find((x) => x.id === pid)?.name ?? pid} • ${lt} (click badge to cycle type)`}
                                   >
-                                    <X className="h-2 w-2" />
-                                  </button>
-                                </span>
-                              ))}
+                                    <span>{labelMap[pid] ?? pid}</span>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleCycleLinkType(a.id, pid, lt); }}
+                                      className="ml-0.5 px-1 rounded bg-blue-100 hover:bg-blue-200 text-[9px] font-bold transition-colors"
+                                    >
+                                      {lt}
+                                    </button>
+                                    <button
+                                      onClick={() => handleRemoveDep(a.id, pid)}
+                                      className="ml-0.5 hover:text-red-500 transition-colors"
+                                    >
+                                      <X className="h-2 w-2" />
+                                    </button>
+                                  </span>
+                                );
+                              })}
                             </div>
                             {/* Trigger button */}
                             <button
@@ -639,6 +667,27 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
                               </div>
                             )}
                           </td>
+                          <td className="px-3 py-2 hidden lg:table-cell" onClick={(e) => e.stopPropagation()}>
+                            {(a.predecessors || []).length === 0 ? (
+                              <span className="text-[10px] text-muted-foreground/40">—</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-0.5">
+                                {(a.predecessors || []).map((pid) => {
+                                  const lt = getLinkType(pid, a.id);
+                                  return (
+                                    <button
+                                      key={pid}
+                                      onClick={() => handleCycleLinkType(a.id, pid, lt)}
+                                      className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+                                      title={`${labelMap[pid] ?? pid} → ${labelMap[a.id] ?? a.id}: ${lt}. Click to cycle FS → SS → FF → SF.`}
+                                    >
+                                      {lt}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-3 py-2">
                             <span className="inline-flex items-center text-[10.5px] font-medium pl-2 border-l-2" style={{ borderColor: getTradeColor(a.trade) }}>
                               {a.trade}
@@ -664,7 +713,7 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
                         {isExpanded && (
                           <tr className="border-b border-primary/20 bg-primary/[0.03]">
                             <td className="pl-8 pr-1 py-0" />
-                            <td className="px-3 py-3" colSpan={10}>
+                            <td className="px-3 py-3" colSpan={11}>
                               {/* Existing subtasks list */}
                               {subtasks.length > 0 && (
                                 <div className="mb-3 space-y-1">

@@ -2,12 +2,12 @@
 
 import { useAppStore, dbToFrontend, frontendToDb } from './useAppStore';
 import { resolveAllDates } from '@/lib/helpers';
-import type { Activity, ActivityDB, LinkedItemRef } from '@/types';
+import type { Activity, ActivityDB, LinkedItemRef, LinkType } from '@/types';
 
 const API_BASE = '/api/activities';
 
 export function useApi() {
-  const { setActivities, activities } = useAppStore();
+  const { setActivities, setActivityLinks, activities } = useAppStore();
 
   async function loadAll(projectId?: string | null): Promise<boolean> {
     try {
@@ -62,6 +62,7 @@ export function useApi() {
       const resolved = resolveAllDates(mapped, typedLinks);
 
       setActivities(resolved);
+      setActivityLinks(typedLinks);
       return true;
     } catch (e) {
       console.warn('API load failed:', (e as Error).message);
@@ -129,14 +130,30 @@ export function useApi() {
     }
   }
 
-  async function addLink(predecessorId: string, successorId: string): Promise<boolean> {
+  async function addLink(predecessorId: string, successorId: string, linkType: LinkType = 'FS', lagDays = 0): Promise<boolean> {
     try {
       const resp = await fetch('/api/activity-links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ predecessor_id: predecessorId, successor_id: successorId }),
+        body: JSON.stringify({ predecessor_id: predecessorId, successor_id: successorId, link_type: linkType, lag_days: lagDays }),
       });
       return resp.ok;
+    } catch { return false; }
+  }
+
+  async function updateLinkType(predecessorId: string, successorId: string, linkType: LinkType): Promise<boolean> {
+    try {
+      const resp = await fetch('/api/activity-links');
+      if (!resp.ok) return false;
+      const links: { id: string; predecessor_id: string; successor_id: string }[] = await resp.json();
+      const link = links.find((l) => l.predecessor_id === predecessorId && l.successor_id === successorId);
+      if (!link) return false;
+      const patch = await fetch(`/api/activity-links/${link.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ link_type: linkType }),
+      });
+      return patch.ok;
     } catch { return false; }
   }
 
@@ -153,7 +170,7 @@ export function useApi() {
     } catch { return false; }
   }
 
-  return { loadAll, saveAll, saveOne, createOne, deleteOne, addLink, removeLink };
+  return { loadAll, saveAll, saveOne, createOne, deleteOne, addLink, removeLink, updateLinkType };
 }
 
 // Per-key debounced save. Each activity id gets its own timer so rapid
