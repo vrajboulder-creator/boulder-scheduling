@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useState, useMemo, Fragment, useRef, useEffect } from 'react';
-import type { Activity } from '@/types';
+import type { Activity, ActivityDB } from '@/types';
 import { useAppStore } from '@/hooks/useAppStore';
 import { useApi } from '@/hooks/useApi';
 import { fmt, isOverdue, getTradeColor, isoDate, addDays, diffDays, TODAY } from '@/lib/helpers';
@@ -10,7 +10,7 @@ import StatusBadge from './StatusBadge';
 import PctBar from './PctBar';
 import { Badge } from './badge';
 import { Card } from './card';
-import { Calendar, Clock, MapPin, ChevronRight, ChevronDown, Plus, Check, X, Link2 } from 'lucide-react';
+import { Calendar, Clock, MapPin, ChevronRight, ChevronDown, Plus, Check, X, Link2, Layers } from 'lucide-react';
 import { AssignButton } from './AssignPopover';
 
 interface Props {
@@ -167,6 +167,7 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [subtaskName, setSubtaskName] = useState('');
   const [savedCount, setSavedCount] = useState(0);
+  const [applyAllStatus, setApplyAllStatus] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [depSearch, setDepSearch] = useState('');
@@ -193,7 +194,7 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
   const openModalWithDefaults = useAppStore((s) => s.openModalWithDefaults);
   const allActivities = useAppStore((s) => s.activities);
   const activityLinks = useAppStore((s) => s.activityLinks);
-  const { addActivity, genId, genSubtaskId, currentProjectId, linkActivities, unlinkActivities, updateLinkType } = useAppStore();
+  const { addActivity, genId, genSubtaskId, currentProjectId, linkActivities, unlinkActivities, updateLinkType, projects } = useAppStore();
   const { createOne, addLink, removeLink, saveOne, updateLinkType: apiUpdateLinkType } = useApi();
 
   const depResults = useMemo(() => {
@@ -324,6 +325,42 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
     setSavedCount((n) => n + 1);
     inputRef.current?.focus();
     createOne(newActivity);
+  };
+
+  const applyToAllProjects = async (parentActivity: Activity) => {
+    const trimmed = subtaskName.trim();
+    if (!trimmed) return;
+    const otherProjects = Object.values(projects).filter((p) => p.id !== currentProjectId);
+    if (!otherProjects.length) { setApplyAllStatus('No other projects'); return; }
+    setApplyAllStatus('Applying…');
+    let applied = 0;
+    for (const proj of otherProjects) {
+      try {
+        const resp = await fetch(`/api/activities?project_id=${proj.id}`);
+        if (!resp.ok) continue;
+        const rows: ActivityDB[] = await resp.json();
+        const match = rows.find((r) => r.name === parentActivity.name);
+        if (!match) continue;
+        const existingSubtasks = rows.filter((r) => r.parent_id === match.id).length;
+        const newId = `${match.id}-ST-${existingSubtasks + 1}`;
+        const start = isoDate(TODAY);
+        const finish = isoDate(addDays(TODAY, 1));
+        await fetch('/api/activities', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: newId, name: trimmed, trade: match.trade, sub: match.sub,
+            area: match.area, floor: match.floor, phase: match.phase,
+            start_date: start, finish_date: finish, duration: 1,
+            status: 'Not Started', pct: 0, priority: 'Normal',
+            project_id: proj.id, parent_id: match.id,
+          }),
+        });
+        applied++;
+      } catch { /* skip */ }
+    }
+    setApplyAllStatus(`Applied to ${applied}/${otherProjects.length} project${otherProjects.length !== 1 ? 's' : ''}`);
+    setTimeout(() => setApplyAllStatus(null), 3000);
   };
 
   // Group by Master Schedule phase — subtasks (parent_id set) excluded from top-level
@@ -815,12 +852,26 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
                                     +{savedCount} added
                                   </span>
                                 )}
+                                {applyAllStatus && (
+                                  <span className="text-[10px] text-blue-600 font-semibold shrink-0 bg-blue-50 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                    {applyAllStatus}
+                                  </span>
+                                )}
                                 <button
                                   onClick={() => commitInline(a)}
                                   className="p-1 rounded hover:bg-primary/20 text-primary transition-colors shrink-0"
-                                  title="Save subtask"
+                                  title="Save subtask to this project"
                                 >
                                   <Check className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => applyToAllProjects(a)}
+                                  disabled={!subtaskName.trim()}
+                                  className="flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded bg-orange-50 text-orange-600 border border-orange-200 hover:bg-orange-100 transition-colors shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                                  title="Add this subtask to all projects"
+                                >
+                                  <Layers className="h-3 w-3" />
+                                  All Projects
                                 </button>
                                 <button
                                   onClick={closePanel}
