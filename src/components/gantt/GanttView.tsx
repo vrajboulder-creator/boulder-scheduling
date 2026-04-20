@@ -133,61 +133,81 @@ export default function GanttView() {
     if (!el) return;
     setDownloading(true);
     try {
-      const html2canvas = (await import('html2canvas')).default;
+      const { toCanvas } = await import('html-to-image');
       const jsPDF = (await import('jspdf')).default;
 
-      const prevMaxH = el.style.maxHeight;
-      const prevH = el.style.height;
-      const prevOverflow = el.style.overflow;
-      el.style.maxHeight = 'none';
-      el.style.height = 'auto';
-      el.style.overflow = 'visible';
+      // Expand all scroll containers so full content renders
+      const saves: { el: HTMLElement; maxH: string; h: string; w: string; overflow: string }[] = [];
+      const expand = (node: HTMLElement) => {
+        saves.push({ el: node, maxH: node.style.maxHeight, h: node.style.height, w: node.style.width, overflow: node.style.overflow });
+        node.style.maxHeight = 'none';
+        node.style.height = 'auto';
+        node.style.overflow = 'visible';
+      };
+      expand(el);
+      el.querySelectorAll<HTMLElement>('.overflow-y-auto, .overflow-auto, .overflow-x-auto').forEach(expand);
 
-      const scrollPanels = el.querySelectorAll<HTMLDivElement>('.overflow-y-auto, .overflow-auto, .overflow-x-auto');
-      const panelPrevStyles: { el: HTMLDivElement; overflow: string; maxH: string; h: string }[] = [];
-      scrollPanels.forEach((p) => {
-        panelPrevStyles.push({ el: p, overflow: p.style.overflow, maxH: p.style.maxHeight, h: p.style.height });
-        p.style.overflow = 'visible';
-        p.style.maxHeight = 'none';
-        p.style.height = 'auto';
-      });
+      // Set explicit dimensions so html-to-image captures full scroll area
+      const fullW = el.scrollWidth;
+      const fullH = el.scrollHeight;
+      el.style.width = `${fullW}px`;
+      el.style.height = `${fullH}px`;
 
-      await new Promise((r) => setTimeout(r, 150));
+      await new Promise((r) => setTimeout(r, 200));
 
-      const canvas = await html2canvas(el, {
-        scale: 1.5,
-        useCORS: true,
+      const canvas = await toCanvas(el, {
+        pixelRatio: 2,
         backgroundColor: '#ffffff',
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: el.scrollWidth,
-        windowHeight: el.scrollHeight,
+        skipFonts: true,
+        width: fullW,
+        height: fullH,
       });
 
-      el.style.maxHeight = prevMaxH;
-      el.style.height = prevH;
-      el.style.overflow = prevOverflow;
-      panelPrevStyles.forEach(({ el: p, overflow, maxH, h }) => {
-        p.style.overflow = overflow;
-        p.style.maxHeight = maxH;
-        p.style.height = h;
+      // Restore all
+      saves.forEach(({ el: n, maxH, h, w, overflow }) => {
+        n.style.maxHeight = maxH; n.style.height = h; n.style.width = w; n.style.overflow = overflow;
       });
 
       const imgW = canvas.width;
       const imgH = canvas.height;
-      const pdfW = 297;
-      const pdfH = Math.ceil((imgH / imgW) * pdfW);
 
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pdfW, Math.max(pdfH, 100)] });
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfW, pdfH);
+      // Wide landscape PDF — full width of Gantt, user scrolls left-right
+      // Page height = A4 landscape height (210mm). Width scales to fit image aspect ratio.
+      const pdfH = 210;
+      const pdfW = Math.ceil((imgW / imgH) * pdfH);
 
-      const filterLabel = [
-        st.trade, st.area, st.status, st.phase,
-        hideUndated ? 'dated-only' : '',
-        datePreset !== 'all' ? datePreset : '',
-      ].filter(Boolean).join('_') || 'all';
+      // jsPDF max dimension = 14400. If too wide, split into pages.
+      const MAX_DIM = 14400;
 
-      pdf.save(`gantt_${filterLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      if (pdfW <= MAX_DIM) {
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pdfW, pdfH] });
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
+        const filterLabel = [st.trade, st.area, st.status, st.phase, hideUndated ? 'dated-only' : '', datePreset !== 'all' ? datePreset : ''].filter(Boolean).join('_') || 'all';
+        pdf.save(`gantt_${filterLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      } else {
+        // Split horizontally into multiple pages
+        const pageWidthMm = MAX_DIM;
+        const totalPages = Math.ceil(pdfW / pageWidthMm);
+        const sliceW = Math.floor(imgW / totalPages);
+        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pageWidthMm, pdfH] });
+
+        for (let i = 0; i < totalPages; i++) {
+          if (i > 0) pdf.addPage([pageWidthMm, pdfH], 'landscape');
+          const sx = i * sliceW;
+          const sw = Math.min(sliceW, imgW - sx);
+          const pageCanvas = document.createElement('canvas');
+          pageCanvas.width = sw;
+          pageCanvas.height = imgH;
+          const pCtx = pageCanvas.getContext('2d')!;
+          pCtx.fillStyle = '#ffffff';
+          pCtx.fillRect(0, 0, sw, imgH);
+          pCtx.drawImage(canvas, sx, 0, sw, imgH, 0, 0, sw, imgH);
+          const pw = (sw / imgH) * pdfH;
+          pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pw, pdfH);
+        }
+        const filterLabel = [st.trade, st.area, st.status, st.phase, hideUndated ? 'dated-only' : '', datePreset !== 'all' ? datePreset : ''].filter(Boolean).join('_') || 'all';
+        pdf.save(`gantt_${filterLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      }
     } catch (e) {
       console.error('PDF export failed:', e);
     } finally {

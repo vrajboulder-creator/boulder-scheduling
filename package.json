@@ -3,9 +3,9 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3000",
+    "dev": "node scripts/find-port.mjs dev",
     "build": "next build",
-    "start": "next start --port 3000",
+    "start": "node scripts/find-port.mjs start",
     "lint": "next lint"
   },
   "dependencies": {
@@ -23,6 +23,7 @@
     "autoprefixer": "^10.4.27",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.8.0",
