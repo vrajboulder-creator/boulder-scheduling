@@ -3,27 +3,22 @@
 import { Document, Page, View, Text, StyleSheet, pdf } from '@react-pdf/renderer';
 import type { Activity } from '@/types';
 
-// ─── Layout constants ───────────────────────────────────────────────
-const LEFT_W   = 200;   // px — left label panel
-const ROW_H    = 14;    // px — activity row height
-const PHASE_H  = 18;    // px — phase header row height
-const HEADER_H = 28;    // px — date header height
-const PX_DAY   = 3.5;   // px per calendar day
-const PAGE_W   = 1190;  // A3 landscape pt (approx usable after padding)
-const TIMELINE_W = PAGE_W - LEFT_W;
+// ─── Page geometry (all in pt — react-pdf native unit) ──────────────
+// A3 landscape = 1190.55 × 841.89 pt. We use 1150 usable after 20pt h-padding each side.
+const PAGE_USABLE_W = 1150;
+const LEFT_W        = 220;    // left name panel width
+const TL_W          = PAGE_USABLE_W - LEFT_W;  // timeline width = 930
+
+const ROW_H    = 16;   // activity row height (pt)
+const PHASE_H  = 20;   // phase header height (pt)
+const HEADER_H = 32;   // date header height (pt)
+
+// Scale: fit the full project span into TL_W — computed per-export, not constant.
+// We pass pxPerDay into the document as a prop.
 
 const BRAND = '#e8793b';
 
-// ─── Status / trade colours ──────────────────────────────────────────
-const STATUS_COLOR: Record<string, string> = {
-  'Not Started':    '#94a3b8',
-  'In Progress':    '#3b82f6',
-  'Complete':       '#22c55e',
-  'Delayed':        '#f97316',
-  'Blocked':        '#ef4444',
-  'Ready to Start': '#a855f7',
-};
-
+// ─── Colours ─────────────────────────────────────────────────────────
 const TRADE_COLORS: Record<string, string> = {
   Framing:          '#6366f1',
   Plumbing:         '#06b6d4',
@@ -43,19 +38,19 @@ const TRADE_COLORS: Record<string, string> = {
 };
 
 function tradeColor(trade: string): string {
-  const key = Object.keys(TRADE_COLORS).find((k) => trade?.includes(k));
+  const key = Object.keys(TRADE_COLORS).find((k) => (trade || '').includes(k));
   return key ? TRADE_COLORS[key] : '#64748b';
 }
 
 function barColor(a: Activity): string {
-  if (a.status === 'Complete') return '#22c55e';
-  if (a.status === 'Blocked')  return '#ef4444';
-  if (a.status === 'Delayed')  return '#f97316';
+  if (a.status === 'Complete')    return '#22c55e';
+  if (a.status === 'Blocked')     return '#ef4444';
+  if (a.status === 'Delayed')     return '#f97316';
   if (a.status === 'In Progress') return '#3b82f6';
   return tradeColor(a.trade || '');
 }
 
-// ─── Date helpers ────────────────────────────────────────────────────
+// ─── Date helpers ─────────────────────────────────────────────────────
 function parseD(d: string | null | undefined): Date | null {
   if (!d) return null;
   const dt = new Date(d + 'T12:00');
@@ -67,218 +62,257 @@ function addDaysD(d: Date, n: number): Date {
 function diffDays(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
-function fmtShort(d: Date): string {
+function fmtTick(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
 }
-function fmtMonthYear(d: Date): string {
+function fmtMonth(d: Date): string {
   return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 }
+function truncate(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
 
-// ─── Styles ──────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────
+interface Group { phase: string; activities: Activity[] }
+interface Tick  { x: number; label: string }
+interface Month { x: number; label: string }
+
+interface DocProps {
+  groups:      Group[];
+  projectName: string;
+  filterLabel: string;
+  totalCount:  number;
+  projStart:   Date;
+  pxPerDay:    number;   // pt per calendar day — pre-computed to fit TL_W
+  ticks:       Tick[];
+  months:      Month[];
+  todayX:      number | null;
+  labelMap:    Record<string, string>;
+}
+
+// ─── StyleSheet ───────────────────────────────────────────────────────
 const s = StyleSheet.create({
   page: {
     fontFamily: 'Helvetica',
     fontSize: 6,
-    backgroundColor: '#ffffff',
-    paddingTop: 20,
-    paddingBottom: 18,
-    paddingHorizontal: 16,
+    backgroundColor: '#fff',
+    paddingTop: 18,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-  // Page header
-  pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  title: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: BRAND },
-  subtitle: { fontSize: 6, color: '#64748b', marginTop: 1 },
-  exportedAt: { fontSize: 5.5, color: '#94a3b8', textAlign: 'right' },
 
-  // Body row wrapper
-  row: { flexDirection: 'row' },
-
-  // Left panel
-  leftPanel: { width: LEFT_W, flexShrink: 0 },
-  leftPhase: {
-    height: PHASE_H,
-    backgroundColor: '#f1f5f9',
-    borderLeftWidth: 2.5, borderLeftColor: BRAND,
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  leftPhaseText: { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: '#334155', flex: 1 },
-  leftPhaseCount: { fontSize: 5.5, color: '#94a3b8' },
-  leftActivity: {
-    height: ROW_H,
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 4, paddingLeft: 8,
-  },
-  leftLabel: { fontSize: 5.5, color: BRAND, fontFamily: 'Helvetica-Bold', width: 22, flexShrink: 0 },
-  leftName: { fontSize: 5.5, color: '#1e293b', flex: 1 },
-
-  // Timeline panel
-  timelinePanel: { flex: 1, position: 'relative', overflow: 'hidden' },
-  dateHeader: {
-    height: HEADER_H,
+  // ── Page-level header ──
+  pageHeader: {
     flexDirection: 'row',
-    borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0',
-    marginBottom: 0,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 6,
   },
-  monthLabel: {
-    position: 'absolute', top: 2,
-    fontSize: 6, color: '#334155', fontFamily: 'Helvetica-Bold',
+  title:      { fontSize: 12, fontFamily: 'Helvetica-Bold', color: BRAND },
+  subtitle:   { fontSize: 6,  color: '#64748b', marginTop: 1 },
+  exportedAt: { fontSize: 5.5, color: '#94a3b8' },
+
+  // ── Date header ──
+  dateHeaderRow: {
+    flexDirection: 'row',
+    height: HEADER_H,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#cbd5e1',
   },
-  weekTick: {
-    position: 'absolute', top: 14,
-    fontSize: 5, color: '#94a3b8',
+  dateHeaderLeft: {
+    width: LEFT_W,
+    flexShrink: 0,
+    justifyContent: 'flex-end',
+    paddingBottom: 3,
+    paddingLeft: 4,
+    borderRightWidth: 0.5,
+    borderRightColor: '#cbd5e1',
   },
-  weekLine: {
-    position: 'absolute', top: 14, bottom: 0,
-    width: 0.5, backgroundColor: '#e2e8f0',
+  dateHeaderLeftText: { fontSize: 5.5, color: '#94a3b8', fontFamily: 'Helvetica-Bold' },
+  dateHeaderTimeline: {
+    width: TL_W,
+    flexShrink: 0,
+    position: 'relative',
+    overflow: 'hidden',
   },
-  phaseStripe: {
-    height: PHASE_H,
-    backgroundColor: '#f8fafc',
-    borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0',
+
+  // ── Month band ──
+  monthBand: {
+    position: 'absolute',
+    top: 0,
+    height: 14,
+    fontSize: 6,
+    color: '#334155',
+    fontFamily: 'Helvetica-Bold',
+    paddingLeft: 2,
   },
-  activityStripeEven: {
-    height: ROW_H,
-    backgroundColor: '#f8fafc',
+
+  // ── Week tick ──
+  tickLine: {
+    position: 'absolute',
+    bottom: 0,
+    width: 0.5,
+    backgroundColor: '#cbd5e1',
+    height: 10,
   },
-  activityStripeOdd: {
-    height: ROW_H,
-    backgroundColor: '#ffffff',
+  tickLabel: {
+    position: 'absolute',
+    bottom: 2,
+    fontSize: 5,
+    color: '#94a3b8',
+  },
+
+  // ── Grid lines (inside timeline cells) ──
+  gridLine: {
+    position: 'absolute',
+    top: 0,
+    width: 0.5,
+    backgroundColor: '#e2e8f0',
   },
   todayLine: {
     position: 'absolute',
-    top: 0, bottom: 0,
-    width: 1, backgroundColor: '#f43f5e',
+    top: 0,
+    width: 1,
+    backgroundColor: '#f43f5e',
   },
+
+  // ── Phase row ──
+  phaseRow: { flexDirection: 'row' },
+  phaseLeft: {
+    width: LEFT_W,
+    flexShrink: 0,
+    height: PHASE_H,
+    backgroundColor: '#f1f5f9',
+    borderLeftWidth: 2.5,
+    borderLeftColor: BRAND,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderRightWidth: 0.5,
+    borderRightColor: '#cbd5e1',
+  },
+  phaseLeftText:  { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#334155', flex: 1 },
+  phaseLeftCount: { fontSize: 5.5, color: '#94a3b8', flexShrink: 0 },
+  phaseTl: {
+    width: TL_W,
+    flexShrink: 0,
+    height: PHASE_H,
+    backgroundColor: '#f1f5f9',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+
+  // ── Activity row ──
+  actRow: { flexDirection: 'row' },
+  actLeft: {
+    width: LEFT_W,
+    flexShrink: 0,
+    height: ROW_H,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 10,
+    paddingRight: 3,
+    borderRightWidth: 0.5,
+    borderRightColor: '#e2e8f0',
+  },
+  actLabel: { fontSize: 5.5, color: BRAND, fontFamily: 'Helvetica-Bold', width: 24, flexShrink: 0 },
+  actName:  { fontSize: 5.5, color: '#1e293b' },
+  actTl: {
+    width: TL_W,
+    flexShrink: 0,
+    height: ROW_H,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+
+  // ── Bar ──
   bar: {
     position: 'absolute',
     height: 9,
     top: (ROW_H - 9) / 2,
     borderRadius: 2,
   },
-  barLabel: {
-    position: 'absolute',
-    fontSize: 4.5,
-    color: '#ffffff',
-    top: (ROW_H - 9) / 2 + 1,
-  },
+
+  // ── Footer ──
   footer: {
-    position: 'absolute', bottom: 10, left: 16, right: 16,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    borderTopWidth: 0.5, borderTopColor: '#e2e8f0', paddingTop: 3,
+    position: 'absolute',
+    bottom: 10, left: 20, right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 0.5,
+    borderTopColor: '#e2e8f0',
+    paddingTop: 3,
   },
   footerText: { fontSize: 5.5, color: '#94a3b8' },
 });
 
-// ─── Types ───────────────────────────────────────────────────────────
-interface Group { phase: string; activities: Activity[] }
-
-interface DocProps {
-  groups: Group[];
-  projectName: string;
-  filterLabel: string;
-  totalCount: number;
-  projStart: Date;
-  projEnd: Date;
-  labelMap: Record<string, string>;
-}
-
-// ─── Build week tick positions ────────────────────────────────────────
-function buildTicks(projStart: Date, projEnd: Date) {
-  const ticks: { x: number; label: string; isMonthStart: boolean; month?: string; monthX?: number }[] = [];
-  const total = diffDays(projStart, projEnd);
-
-  // Month labels
-  const months: { x: number; label: string }[] = [];
-  let cur = new Date(projStart);
-  cur.setDate(1);
-  if (cur < projStart) cur.setMonth(cur.getMonth() + 1);
-  while (cur <= projEnd) {
-    const x = diffDays(projStart, cur) * PX_DAY;
-    months.push({ x, label: fmtMonthYear(cur) });
-    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
-  }
-
-  // Week ticks every 7 days
-  for (let d = 0; d <= total; d += 7) {
-    const date = addDaysD(projStart, d);
-    const x = d * PX_DAY;
-    ticks.push({ x, label: fmtShort(date), isMonthStart: false });
-  }
-
-  return { ticks, months };
-}
-
-// ─── Document ────────────────────────────────────────────────────────
-function GanttPdfDocument({ groups, projectName, filterLabel, totalCount, projStart, projEnd, labelMap }: DocProps) {
+// ─── Document ─────────────────────────────────────────────────────────
+function GanttPdfDocument({
+  groups, projectName, filterLabel, totalCount,
+  projStart, pxPerDay, ticks, months, todayX, labelMap,
+}: DocProps) {
   const exportedAt = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const totalDays = diffDays(projStart, projEnd) + 1;
-  const timelineW = totalDays * PX_DAY;
 
-  const todayX = diffDays(projStart, new Date()) * PX_DAY;
-  const showToday = todayX >= 0 && todayX <= timelineW;
-
-  const { ticks, months } = buildTicks(projStart, projEnd);
-
-  // Pages: split rows across A3 landscape pages.
-  // Usable height per page (pt): A3 landscape ~841pt - 20-18 padding - 28 header - 22 date header = ~753pt
-  // But we use fixed layout so we just render one long page — react-pdf will wrap.
-
-  // Flatten all rows: [phase-header, ...activities] per group
   type FlatRow =
     | { kind: 'phase'; phase: string; count: number }
-    | { kind: 'activity'; activity: Activity; label: string; rowIdx: number };
+    | { kind: 'act';   a: Activity; label: string; ri: number };
 
   const flatRows: FlatRow[] = [];
-  let rowIdx = 0;
+  let ri = 0;
   groups.forEach(({ phase, activities }) => {
     flatRows.push({ kind: 'phase', phase, count: activities.length });
-    activities.forEach((a) => {
-      flatRows.push({ kind: 'activity', activity: a, label: labelMap[a.id] || a.id, rowIdx: rowIdx++ });
-    });
+    activities.forEach((a) => flatRows.push({ kind: 'act', a, label: labelMap[a.id] || '', ri: ri++ }));
   });
 
-  // Compute cumulative Y offsets for bars (needed for absolute positioning per page)
-  // We'll use a single long View and let react-pdf page-break it.
-  // However react-pdf doesn't support SVG/canvas — we render each bar as an absolute View inside
-  // a fixed-height View per row. This means the timeline column for each row must be its own positioned container.
+  // Pre-compute bar positions for all activities
+  function barPos(a: Activity): { x: number; w: number } | null {
+    const dur = Math.max(1, a.duration || 1);
+    let sd = parseD(a.start);
+    let fd = parseD(a.finish);
+    if (sd && !fd) fd = addDaysD(sd, dur - 1);
+    else if (fd && !sd) sd = addDaysD(fd, -(dur - 1));
+    if (!sd || !fd) return null;
+    const x = diffDays(projStart, sd) * pxPerDay;
+    const w = Math.max(pxPerDay, (diffDays(sd, fd) + 1) * pxPerDay);
+    // clip to timeline
+    if (x + w < 0 || x > TL_W) return null;
+    const cx = Math.max(0, x);
+    const cw = Math.min(w - (cx - x), TL_W - cx);
+    if (cw <= 0) return null;
+    return { x: cx, w: cw };
+  }
 
   return (
     <Document title={`${projectName} — Gantt Schedule`} author="Boulder Construction">
-      <Page
-        size="A3"
-        orientation="landscape"
-        style={s.page}
-        wrap
-      >
-        {/* ── Page header ── */}
+      <Page size="A3" orientation="landscape" style={s.page} wrap>
+
+        {/* ── Top header ── */}
         <View style={s.pageHeader} fixed>
           <View>
             <Text style={s.title}>Boulder Construction — {projectName}</Text>
             <Text style={s.subtitle}>
-              Gantt Schedule Export{filterLabel ? `  ·  ${filterLabel}` : ''}  ·  {totalCount} activities
+              Gantt Schedule{filterLabel ? `  ·  ${filterLabel}` : ''}  ·  {totalCount} activities
             </Text>
           </View>
           <Text style={s.exportedAt}>Exported {exportedAt}</Text>
         </View>
 
-        {/* ── Date header row (fixed at top of each page) ── */}
-        <View style={s.row} fixed>
-          {/* Left spacer */}
-          <View style={[s.leftPanel, { height: HEADER_H, borderBottomWidth: 0.5, borderBottomColor: '#e2e8f0', backgroundColor: '#fff' }]}>
-            <Text style={{ fontSize: 6, color: '#94a3b8', padding: 4, paddingTop: 10 }}>ACTIVITY</Text>
+        {/* ── Date header (repeats on every page) ── */}
+        <View style={s.dateHeaderRow} fixed>
+          <View style={s.dateHeaderLeft}>
+            <Text style={s.dateHeaderLeftText}>ACTIVITY</Text>
           </View>
-          {/* Timeline header */}
-          <View style={[s.timelinePanel, { height: HEADER_H, position: 'relative', overflow: 'hidden' }]}>
+          <View style={s.dateHeaderTimeline}>
             {/* Month labels */}
             {months.map((m, i) => (
-              <Text key={i} style={[s.monthLabel, { left: Math.max(0, m.x) }]}>{m.label}</Text>
+              <Text key={`m${i}`} style={[s.monthBand, { left: m.x }]}>{m.label}</Text>
             ))}
             {/* Week ticks */}
             {ticks.map((t, i) => (
-              <View key={i}>
-                <View style={[s.weekLine, { left: t.x, top: HEADER_H - 10, height: 10 }]} />
-                <Text style={[s.weekTick, { left: t.x + 1 }]}>{t.label}</Text>
+              <View key={`t${i}`}>
+                <View style={[s.tickLine, { left: t.x }]} />
+                <Text style={[s.tickLabel, { left: t.x + 1 }]}>{t.label}</Text>
               </View>
             ))}
           </View>
@@ -288,74 +322,55 @@ function GanttPdfDocument({ groups, projectName, filterLabel, totalCount, projSt
         {flatRows.map((row, i) => {
           if (row.kind === 'phase') {
             return (
-              <View key={i} style={s.row} wrap={false}>
-                {/* Left phase label */}
-                <View style={s.leftPhase}>
-                  <Text style={s.leftPhaseText}>{row.phase}</Text>
-                  <Text style={s.leftPhaseCount}>{row.count} {row.count === 1 ? 'task' : 'tasks'}</Text>
+              <View key={i} style={s.phaseRow} wrap={false}>
+                <View style={s.phaseLeft}>
+                  <Text style={s.phaseLeftText}>{truncate(row.phase, 28)}</Text>
+                  <Text style={s.phaseLeftCount}>{row.count}t</Text>
                 </View>
-                {/* Timeline phase stripe */}
-                <View style={[s.phaseStripe, { flex: 1 }]}>
-                  {/* week grid lines */}
+                <View style={s.phaseTl}>
                   {ticks.map((t, ti) => (
-                    <View key={ti} style={[s.weekLine, { left: t.x, top: 0, height: PHASE_H }]} />
+                    <View key={ti} style={[s.gridLine, { left: t.x, height: PHASE_H }]} />
                   ))}
-                  {showToday && (
-                    <View style={[s.todayLine, { left: todayX, top: 0, height: PHASE_H }]} />
+                  {todayX !== null && (
+                    <View style={[s.todayLine, { left: todayX, height: PHASE_H }]} />
                   )}
                 </View>
               </View>
             );
           }
 
-          // Activity row
-          const { activity: a, label, rowIdx: ri } = row;
-          const stripe = ri % 2 === 0 ? s.activityStripeEven : s.activityStripeOdd;
-
-          const dur = Math.max(1, a.duration || 1);
-          let startD = parseD(a.start);
-          let finishD = parseD(a.finish);
-          if (startD && !finishD) finishD = addDaysD(startD, dur - 1);
-          else if (finishD && !startD) startD = addDaysD(finishD, -(dur - 1));
-
-          let barX: number | null = null;
-          let barW: number | null = null;
-          if (startD && finishD) {
-            barX = diffDays(projStart, startD) * PX_DAY;
-            barW = Math.max(PX_DAY, (diffDays(startD, finishD) + 1) * PX_DAY);
-          }
-
+          const { a, label, ri: rowI } = row;
+          const bgColor = rowI % 2 === 0 ? '#f8fafc' : '#ffffff';
+          const bp = barPos(a);
           const color = barColor(a);
-          const pct = a.pct ?? 0;
+          const pct = Math.min(100, Math.max(0, a.pct ?? 0));
 
           return (
-            <View key={i} style={s.row} wrap={false}>
-              {/* Left label */}
-              <View style={[s.leftActivity, { backgroundColor: stripe.backgroundColor }]}>
-                <Text style={s.leftLabel}>{label}</Text>
-                <Text style={s.leftName}>{a.name.length > 30 ? a.name.slice(0, 29) + '…' : a.name}</Text>
+            <View key={i} style={s.actRow} wrap={false}>
+              <View style={[s.actLeft, { backgroundColor: bgColor }]}>
+                <Text style={s.actLabel}>{label}</Text>
+                <Text style={s.actName}>{truncate(a.name, 32)}</Text>
               </View>
-
-              {/* Timeline cell */}
-              <View style={[stripe, { flex: 1, position: 'relative' }]}>
-                {/* week grid lines */}
+              <View style={[s.actTl, { backgroundColor: bgColor }]}>
+                {/* Grid lines */}
                 {ticks.map((t, ti) => (
-                  <View key={ti} style={[s.weekLine, { left: t.x, top: 0, height: ROW_H }]} />
+                  <View key={ti} style={[s.gridLine, { left: t.x, height: ROW_H }]} />
                 ))}
-                {showToday && (
-                  <View style={[s.todayLine, { left: todayX, top: 0, height: ROW_H }]} />
+                {/* Today line */}
+                {todayX !== null && (
+                  <View style={[s.todayLine, { left: todayX, height: ROW_H }]} />
                 )}
                 {/* Bar */}
-                {barX !== null && barW !== null && barX + barW >= 0 && barX <= timelineW && (
+                {bp && (
                   <>
-                    {/* Background (full bar) */}
-                    <View style={[s.bar, { left: barX, width: barW, backgroundColor: color, opacity: 0.25 }]} />
+                    {/* Full bar bg */}
+                    <View style={[s.bar, { left: bp.x, width: bp.w, backgroundColor: color, opacity: 0.22 }]} />
                     {/* Progress fill */}
                     {pct > 0 && (
-                      <View style={[s.bar, { left: barX, width: barW * (pct / 100), backgroundColor: color }]} />
+                      <View style={[s.bar, { left: bp.x, width: bp.w * pct / 100, backgroundColor: color, opacity: 0.9 }]} />
                     )}
-                    {/* Outline */}
-                    <View style={[s.bar, { left: barX, width: barW, backgroundColor: 'transparent', borderWidth: 0.75, borderColor: color }]} />
+                    {/* Border outline */}
+                    <View style={[s.bar, { left: bp.x, width: bp.w, backgroundColor: 'transparent', borderWidth: 0.8, borderColor: color }]} />
                   </>
                 )}
               </View>
@@ -368,39 +383,64 @@ function GanttPdfDocument({ groups, projectName, filterLabel, totalCount, projSt
           <Text style={s.footerText}>Boulder Construction Schedule Command Center</Text>
           <Text style={s.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`} />
         </View>
+
       </Page>
     </Document>
   );
 }
 
-// ─── Export function ─────────────────────────────────────────────────
+// ─── Export entry point ───────────────────────────────────────────────
 export async function exportGanttPdf(
-  groups: Group[],
+  groups:      Group[],
   projectName: string,
   filterLabel: string,
-  totalCount: number,
-  labelMap: Record<string, string>,
+  totalCount:  number,
+  labelMap:    Record<string, string>,
 ) {
-  // Compute project date range
+  // ── 1. Compute project date span ──
   const times: number[] = [];
-  groups.forEach(({ activities }) => {
+  groups.forEach(({ activities }) =>
     activities.forEach((a) => {
       const dur = Math.max(1, a.duration || 1);
-      let s = parseD(a.start);
-      let f = parseD(a.finish);
-      if (s && !f) f = addDaysD(s, dur - 1);
-      else if (f && !s) s = addDaysD(f, -(dur - 1));
-      if (s) times.push(s.getTime());
-      if (f) times.push(f.getTime());
-    });
-  });
-
+      let sd = parseD(a.start);
+      let fd = parseD(a.finish);
+      if (sd && !fd) fd = addDaysD(sd, dur - 1);
+      else if (fd && !sd) sd = addDaysD(fd, -(dur - 1));
+      if (sd) times.push(sd.getTime());
+      if (fd) times.push(fd.getTime());
+    })
+  );
   const now = new Date();
   if (times.length === 0) { times.push(now.getTime()); times.push(addDaysD(now, 30).getTime()); }
 
   const projStart = addDaysD(new Date(Math.min(...times)), -7);
   const projEnd   = addDaysD(new Date(Math.max(...times)), 14);
+  const totalDays = diffDays(projStart, projEnd) + 1;
 
+  // ── 2. Scale to fit TL_W ──
+  const pxPerDay = TL_W / totalDays;
+
+  // ── 3. Build ticks & months ──
+  const ticks: Tick[] = [];
+  // Decide week tick interval based on scale
+  const tickEvery = pxPerDay * 7 >= 12 ? 7 : pxPerDay * 14 >= 12 ? 14 : 30;
+  for (let d = 0; d <= totalDays; d += tickEvery) {
+    ticks.push({ x: d * pxPerDay, label: fmtTick(addDaysD(projStart, d)) });
+  }
+
+  const months: Month[] = [];
+  let cur = new Date(projStart.getFullYear(), projStart.getMonth(), 1);
+  if (cur < projStart) cur = new Date(projStart.getFullYear(), projStart.getMonth() + 1, 1);
+  while (cur <= projEnd) {
+    months.push({ x: diffDays(projStart, cur) * pxPerDay, label: fmtMonth(cur) });
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+  }
+
+  // ── 4. Today marker ──
+  const todayOffset = diffDays(projStart, now);
+  const todayX = todayOffset >= 0 && todayOffset <= totalDays ? todayOffset * pxPerDay : null;
+
+  // ── 5. Render ──
   const doc = (
     <GanttPdfDocument
       groups={groups}
@@ -408,16 +448,19 @@ export async function exportGanttPdf(
       filterLabel={filterLabel}
       totalCount={totalCount}
       projStart={projStart}
-      projEnd={projEnd}
+      pxPerDay={pxPerDay}
+      ticks={ticks}
+      months={months}
+      todayX={todayX}
       labelMap={labelMap}
     />
   );
 
   const blob = await pdf(doc).toBlob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `gantt_${new Date().toISOString().slice(0, 10)}.pdf`;
-  a.click();
+  const url  = URL.createObjectURL(blob);
+  const el   = document.createElement('a');
+  el.href     = url;
+  el.download  = `gantt_${new Date().toISOString().slice(0, 10)}.pdf`;
+  el.click();
   URL.revokeObjectURL(url);
 }

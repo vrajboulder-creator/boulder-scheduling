@@ -21,8 +21,20 @@ const PROJECT_COORDS: Record<string, { lat: number; lon: number }> = {
 };
 
 export default function HomePage() {
-  const { currentProject, projects, setActivities, setProjects, setCurrentProject, updateProjectWeather, showToast } = useAppStore();
+  const { currentProject, projects, setActivities, setProjects, setCurrentProject, updateProjectWeather, showToast, setView } = useAppStore();
   const { loadAll, loadUsers } = useApi();
+
+  // Allow ?view=gantt&pdf=1 in URL — used by server-side PDF export
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get('view');
+    if (v) setView(v as Parameters<typeof setView>[0]);
+    if (params.get('pdf') === '1') {
+      // Enable fullscreen Gantt so the chart fills the viewport with no height cap
+      useAppStore.getState().setGanttFullscreen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Boot: load projects, then activities for the selected project
   useEffect(() => {
@@ -47,7 +59,13 @@ export default function HomePage() {
         });
         setProjects(byCode);
         const firstCode = rows.find((p) => p.code === 'tpsj')?.code || rows[0]?.code;
-        if (firstCode) setCurrentProject(firstCode);
+        if (firstCode) {
+          setCurrentProject(firstCode);
+          // projects state is now set — fetch weather immediately (the currentProject
+          // useEffect fires before setProjects resolves, so proj is undefined there)
+          const projForWeather = byCode[firstCode];
+          if (projForWeather) fetchWeather(firstCode, projForWeather);
+        }
       } catch (e) {
         console.warn('Project load failed:', (e as Error).message);
         showToast('Failed to load projects from database');
@@ -84,8 +102,8 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject]);
 
-  async function fetchWeather(projectKey: string) {
-    const proj = projects[projectKey];
+  async function fetchWeather(projectKey: string, projOverride?: typeof projects[string]) {
+    const proj = projOverride ?? projects[projectKey];
     if (!proj || proj.weatherLoaded) return;
     try {
       const resp = await fetch(

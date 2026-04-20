@@ -718,14 +718,14 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
                               {/* Existing subtasks list */}
                               {subtasks.length > 0 && (
                                 <div className="mb-3 space-y-1">
-                                  {subtasks.map((s) => (
+                                  {subtasks.map((s, sIdx) => (
                                     <div
                                       key={s.id}
                                       onClick={(e) => { e.stopPropagation(); setSelectedActivity(s.id); }}
                                       className="flex items-center gap-2 text-[11.5px] py-1 px-2 rounded hover:bg-primary/10 cursor-pointer transition-colors group/sub"
                                     >
                                       <span className="w-0.5 h-4 bg-primary/30 rounded-full shrink-0" />
-                                      <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0">{s.id}</span>
+                                      <span className="font-mono text-[10px] text-primary/70 shrink-0">{actLabel}.{sIdx + 1}</span>
                                       <span className="flex-1 truncate font-medium">{s.name}</span>
                                       <div className="flex-1 flex justify-center">
                                         <AssignButton subtaskId={s.id} assigneeId={s.assignee_id} />

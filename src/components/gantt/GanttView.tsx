@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
-import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange, Download } from 'lucide-react';
+import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange, Download, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SUBS } from '@/data/constants';
 import type { Activity } from '@/types';
@@ -119,15 +119,22 @@ export default function GanttView() {
   const pxDay = ganttPxPerDay;
 
   // ─── DATE RANGE STATE ───
-  const [datePreset, setDatePreset] = useState<DatePreset>('all');
-  const [customFrom, setCustomFrom] = useState('');
-  const [customTo, setCustomTo] = useState('');
+  // If ?from=&to= are in URL (PDF export mode), pre-apply custom range
+  const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const urlFrom = urlParams?.get('from') || '';
+  const urlTo   = urlParams?.get('to')   || '';
+  const [datePreset, setDatePreset] = useState<DatePreset>(urlFrom && urlTo ? 'custom' : 'all');
+  const [customFrom, setCustomFrom] = useState(urlFrom);
+  const [customTo, setCustomTo]     = useState(urlTo);
   const [hideUndated, setHideUndated] = useState(false);
 
   // ─── FILTERS ───
   const st = getSectionState('gantt');
 
   const [downloading, setDownloading] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [pdfFrom, setPdfFrom] = useState('');
+  const [pdfTo, setPdfTo] = useState('');
 
   const allFiltered = useMemo(
     () => {
@@ -172,9 +179,10 @@ export default function GanttView() {
   const dynPhases = useMemo(() => [...new Set(narrowFor('phase').map((a) => a.phase).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Group by phase in CSV order; sort within phase by sort_order then id
+  // Exclude subtasks (parent_id set) — they render indented under their parent
   const grouped = useMemo(() => {
     const g: Record<string, Activity[]> = {};
-    filtered.forEach((a) => {
+    filtered.filter((a) => !a.parent_id).forEach((a) => {
       const ph = normalizePhase(a.phase || 'Other');
       (g[ph] = g[ph] || []).push(a);
     });
@@ -192,7 +200,7 @@ export default function GanttView() {
     ),
   [grouped]);
 
-  // Label map: activity.id → "N-X" (phase number + letter within phase)
+  // Label map: activity → "N-X", subtask → "N-X-S-1"
   const labelMap = useMemo(() => {
     const map: Record<string, string> = {};
     trades.forEach((phase, phaseIdx) => {
@@ -200,27 +208,43 @@ export default function GanttView() {
         const letter = actIdx < 26
           ? String.fromCharCode(65 + actIdx)
           : String.fromCharCode(65 + Math.floor(actIdx / 26) - 1) + String.fromCharCode(65 + (actIdx % 26));
-        map[a.id] = `${phaseIdx + 1}-${letter}`;
+        const actLabel = `${phaseIdx + 1}-${letter}`;
+        map[a.id] = actLabel;
+        activities.filter((s) => s.parent_id === a.id).forEach((sub, si) => {
+          map[sub.id] = `${actLabel}-S-${si + 1}`;
+        });
       });
     });
     return map;
-  }, [trades, grouped]);
+  }, [trades, grouped, activities]);
 
-  const downloadPdf = useCallback(async () => {
+  const downloadPdf = useCallback(async (fromDate: string, toDate: string) => {
     setDownloading(true);
+    setPdfModalOpen(false);
     try {
-      const { exportGanttPdf } = await import('./GanttPdfExport');
-      const groups = trades.map((phase) => ({ phase, activities: grouped[phase] || [] }));
-      const filterLabel = [st.trade, st.area, st.status, st.phase, hideUndated ? 'dated-only' : '', datePreset !== 'all' ? datePreset : ''].filter(Boolean).join(', ');
-      const proj = useAppStore.getState();
-      const projectName = proj.projects[proj.currentProject]?.name || 'Project Schedule';
-      await exportGanttPdf(groups, projectName, filterLabel, filtered.length, labelMap);
+      const pageUrl = window.location.href;
+      const res = await fetch('/api/gantt-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: pageUrl, fromDate, toDate }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gantt_${fromDate}_${toDate}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error('PDF export failed:', e);
     } finally {
       setDownloading(false);
     }
-  }, [trades, grouped, st, hideUndated, datePreset, filtered.length, labelMap]);
+  }, []);
 
   // Date range for timeline. Mirror the bar-rendering logic so the timeline
   // bounds include synthesized endpoints (duration-derived) — otherwise a
@@ -247,17 +271,22 @@ export default function GanttView() {
     return { projStart: ps, projEnd: pe, totalDays: td, timelineW: td * pxDay, hasData: has };
   }, [filtered, presetRange, pxDay]);
 
-  // Flat rows
-  interface RowData { type: 'trade' | 'activity'; trade: string; activity?: Activity; idx: number }
+  // Flat rows — parent activity followed immediately by its subtasks
+  interface RowData { type: 'trade' | 'activity'; trade: string; activity?: Activity; idx: number; isSubtask?: boolean }
   const rows = useMemo(() => {
     const r: RowData[] = [];
     let flatIdx = 0;
     trades.forEach((trade) => {
       r.push({ type: 'trade', trade, idx: flatIdx++ });
-      grouped[trade].forEach((act) => { r.push({ type: 'activity', trade, activity: act, idx: flatIdx++ }); });
+      grouped[trade].forEach((act) => {
+        r.push({ type: 'activity', trade, activity: act, idx: flatIdx++ });
+        activities
+          .filter((s) => s.parent_id === act.id)
+          .forEach((sub) => r.push({ type: 'activity', trade, activity: sub, idx: flatIdx++, isSubtask: true }));
+      });
     });
     return r;
-  }, [trades, grouped]);
+  }, [trades, grouped, activities]);
 
   // Activity-id → cumulative Y coordinate (top of its row) and total chart height.
   // Needed for dependency arrows (#16) because trade headers (30px) and activity
@@ -734,7 +763,11 @@ export default function GanttView() {
             {ganttFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             {ganttFullscreen ? 'Exit' : 'Fullscreen'}
           </Button>
-          <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={downloadPdf} disabled={downloading}>
+          <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" onClick={() => {
+            setPdfFrom(isoDate(projStart));
+            setPdfTo(isoDate(projEnd));
+            setPdfModalOpen(true);
+          }} disabled={downloading}>
             <Download className="h-3.5 w-3.5" />
             {downloading ? 'Exporting…' : 'PDF'}
           </Button>
@@ -818,9 +851,9 @@ export default function GanttView() {
           No dated activities to display.
         </Card>
       ) : (
-      <Card ref={ganttCardRef} className={cn("flex overflow-hidden flex-1", ganttFullscreen ? "h-0" : "h-[500px]")}>
+      <Card ref={ganttCardRef} data-gantt-card className={cn("flex overflow-hidden flex-1", ganttFullscreen ? "h-0" : "h-[500px]")}>
         {/* LEFT PANEL */}
-        <div ref={leftPanelRef} className="w-[220px] min-w-[220px] border-r overflow-y-auto scrollbar-hide">
+        <div ref={leftPanelRef} data-left-scroll className="w-[220px] min-w-[220px] border-r overflow-y-auto scrollbar-hide">
           <div className="h-[44px] border-b bg-muted/50 flex items-center px-3 sticky top-0 z-10 bg-card">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Activity</span>
           </div>
@@ -834,8 +867,9 @@ export default function GanttView() {
                 <span className="ml-auto text-[9px] font-normal text-muted-foreground shrink-0">({grouped[row.trade].length})</span>
               </div>
             ) : (
-              <div key={`a-${row.activity!.id}`} data-left-row={row.activity!.id} className="flex items-center px-3 text-[11px] cursor-pointer border-b border-border/30 hover:bg-primary/5 truncate" style={{ height: ROW_H }} onClick={() => { if (ganttSidebarOn) setSelectedActivity(row.activity!.id); }}>
-                <span className="font-mono text-[10px] text-blue-500 mr-1.5 shrink-0">{labelMap[row.activity!.id] ?? row.activity!.id}</span>
+              <div key={`a-${row.activity!.id}`} data-left-row={row.activity!.id} className="flex items-center text-[11px] cursor-pointer border-b border-border/30 hover:bg-primary/5 truncate" style={{ height: ROW_H, paddingLeft: row.isSubtask ? 20 : 12, paddingRight: 8 }} onClick={() => { if (ganttSidebarOn) setSelectedActivity(row.activity!.id); }}>
+                {row.isSubtask && <span className="w-0.5 h-3 bg-slate-400/50 rounded-full mr-1.5 shrink-0" />}
+                <span className="font-mono text-[10px] mr-1.5 shrink-0" style={{ color: row.isSubtask ? '#94a3b8' : '#3b82f6' }}>{labelMap[row.activity!.id] ?? row.activity!.id}</span>
                 <span className="truncate">{row.activity!.name}</span>
               </div>
             )
@@ -843,7 +877,7 @@ export default function GanttView() {
         </div>
 
         {/* RIGHT PANEL */}
-        <div ref={timelineRef} className="flex-1 overflow-auto scrollbar-thin cursor-grab active:cursor-grabbing relative" onMouseDown={handlePanMouseDown}>
+        <div ref={timelineRef} data-timeline-scroll className="flex-1 overflow-auto scrollbar-thin cursor-grab active:cursor-grabbing relative" onMouseDown={handlePanMouseDown}>
           {/* Date guide line (hidden by default, shown during drag/resize) */}
           <div ref={dateGuideRef} className="absolute top-0 bottom-0 w-[1px] z-[15] pointer-events-none" style={{ display: 'none', background: 'hsl(var(--primary))', opacity: 0.7 }}>
             <div className="w-1.5 h-1.5 rounded-full bg-primary absolute -top-0.5 -left-[2px]" />
@@ -979,6 +1013,76 @@ export default function GanttView() {
         <span>Ctrl+scroll → zoom</span>
         {ganttFullscreen && <span>Esc → exit</span>}
       </div>
+
+      {/* ── PDF Export Modal ── */}
+      {pdfModalOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/40" onClick={() => setPdfModalOpen(false)}>
+          <div className="bg-card rounded-xl shadow-2xl border p-6 w-[400px]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="h-4 w-4 text-primary" />
+              <h3 className="text-[14px] font-bold">Export Gantt PDF</h3>
+            </div>
+
+            {/* Quick presets */}
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Quick Range</p>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {([
+                { label: '3 Weeks',  weeks: 3  },
+                { label: '6 Weeks',  weeks: 6  },
+                { label: '3 Months', weeks: 13 },
+                { label: '6 Months', weeks: 26 },
+                { label: '1 Year',   weeks: 52 },
+                { label: 'Full Project', weeks: 0 },
+              ] as { label: string; weeks: number }[]).map(({ label, weeks }) => (
+                <button
+                  key={label}
+                  className="px-2.5 py-1 rounded-full text-[11px] border border-border hover:bg-primary hover:text-white hover:border-primary transition-colors"
+                  onClick={() => {
+                    const from = new Date(pdfFrom || isoDate(projStart));
+                    const to = weeks === 0
+                      ? new Date(isoDate(projEnd))
+                      : addDays(from, weeks * 7 - 1);
+                    setPdfFrom(isoDate(from));
+                    setPdfTo(isoDate(to));
+                  }}
+                >{label}</button>
+              ))}
+            </div>
+
+            {/* Manual date inputs */}
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Custom Range</p>
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div>
+                <label className="text-[11px] text-muted-foreground block mb-1">Start Date</label>
+                <Input type="date" value={pdfFrom} onChange={(e) => setPdfFrom(e.target.value)} className="h-8 text-sm" />
+              </div>
+              <div>
+                <label className="text-[11px] text-muted-foreground block mb-1">End Date</label>
+                <Input type="date" value={pdfTo} onChange={(e) => setPdfTo(e.target.value)} className="h-8 text-sm" />
+              </div>
+            </div>
+
+            {pdfFrom && pdfTo && pdfFrom <= pdfTo && (
+              <p className="text-[10px] text-muted-foreground mb-4">
+                {Math.round((new Date(pdfTo).getTime() - new Date(pdfFrom).getTime()) / 86400000 / 7)} weeks · {pdfFrom} → {pdfTo}
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => setPdfModalOpen(false)}>Cancel</Button>
+              <Button
+                size="sm"
+                className="text-xs h-8 gap-1"
+                disabled={!pdfFrom || !pdfTo || pdfFrom > pdfTo}
+                onClick={() => downloadPdf(pdfFrom, pdfTo)}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export PDF
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
