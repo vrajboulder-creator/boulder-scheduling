@@ -23,6 +23,7 @@ interface AppState {
   setActivityLinks: (links: ActivityLink[]) => void;
   addActivity: (a: Activity) => void;
   updateActivity: (id: string, updates: Partial<Activity>) => void;
+  updateActivitiesBulk: (updates: { id: string; changes: Partial<Activity> }[]) => void;
   removeActivity: (id: string) => void;
   linkActivities: (predecessorId: string, successorId: string, linkType?: 'FS' | 'FF' | 'SS' | 'SF', lagDays?: number) => void;
   unlinkActivities: (predecessorId: string, successorId: string) => void;
@@ -112,6 +113,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({
       activities: s.activities.map((a) => (a.id === id ? { ...a, ...updates } : a)),
     })),
+  updateActivitiesBulk: (updates) => {
+    const map = new Map(updates.map((u) => [u.id, u.changes]));
+    set((s) => ({
+      activities: s.activities.map((a) => map.has(a.id) ? { ...a, ...map.get(a.id) } : a),
+    }));
+  },
   removeActivity: (id) =>
     set((s) => ({ activities: s.activities.filter((a) => a.id !== id) })),
 
@@ -288,6 +295,8 @@ export function dbToFrontend(row: ActivityDB & { _predecessors?: string[]; _succ
     linked: row._linked || [],
     attachments: [],
     sort_order: row.sort_order ?? 0,
+    estimated_start: row.estimated_start ?? null,
+    estimated_finish: row.estimated_finish ?? null,
   };
 }
 
@@ -314,5 +323,7 @@ export function frontendToDb(a: Activity): Record<string, unknown> {
     sort_order: a.sort_order ?? 0,
     parent_id: a.parent_id ?? null,
     assignee_id: a.assignee_id ?? null,
+    estimated_start: a.estimated_start ?? null,
+    estimated_finish: a.estimated_finish ?? null,
   };
 }

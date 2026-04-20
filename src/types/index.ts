@@ -52,6 +52,8 @@ export interface ActivityDB {
   lookahead: boolean;
   notes: string;
   sort_order?: number;
+  estimated_start?: string | null;
+  estimated_finish?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -83,6 +85,8 @@ export interface Activity {
   linked: LinkedItemRef[];
   attachments: AttachmentRef[];
   sort_order?: number;
+  estimated_start?: string | null;
+  estimated_finish?: string | null;
 }
 
 export interface LinkedItemRef {

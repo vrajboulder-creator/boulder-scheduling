@@ -150,14 +150,12 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Header />
-        <div className="flex-1 flex overflow-hidden">
-          <ViewSwitcher />
-          <DetailPanel />
-        </div>
+      <Header />
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        <ViewSwitcher />
+        <DetailPanel />
       </div>
       <ActivityModal />
       <ToastProvider />

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
-import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange, Download, Calendar } from 'lucide-react';
+import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange, Download, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SUBS } from '@/data/constants';
 import type { Activity } from '@/types';
@@ -107,7 +107,7 @@ export default function GanttView() {
     activities, ganttPxPerDay, setGanttPxPerDay,
     ganttFullscreen, setGanttFullscreen,
     ganttSidebarOn, setGanttSidebarOn,
-    setSelectedActivity, updateActivity, showToast,
+    setSelectedActivity, updateActivity, updateActivitiesBulk, showToast,
     getSectionState, setSectionFilter, clearSectionFilters, searchQuery,
   } = useAppStore();
   const { saveOne } = useApi();
@@ -127,6 +127,32 @@ export default function GanttView() {
   const [customFrom, setCustomFrom] = useState(urlFrom);
   const [customTo, setCustomTo]     = useState(urlTo);
   const [hideUndated, setHideUndated] = useState(false);
+  const [collapsedTrades, setCollapsedTrades] = useState<Set<string>>(new Set());
+  const [tradesInitialized, setTradesInitialized] = useState(false);
+  const [collapsedActivities, setCollapsedActivities] = useState<Set<string>>(new Set());
+
+  // ─── UNDO STACK (Ctrl+Z) — snapshots sort_order before each reorder ───
+  const undoStack = useRef<Array<Record<string, number>>>([]);
+  const pushUndo = useCallback((peers: Activity[]) => {
+    const snapshot: Record<string, number> = {};
+    peers.forEach((a) => { snapshot[a.id] = a.sort_order ?? 0; });
+    undoStack.current = [...undoStack.current.slice(-19), snapshot];
+  }, []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'z') return;
+      const snapshot = undoStack.current.pop();
+      if (!snapshot) return;
+      e.preventDefault();
+      const bulkUpdates = Object.entries(snapshot).map(([id, order]) => ({ id, changes: { sort_order: order } }));
+      updateActivitiesBulk(bulkUpdates);
+      bulkUpdates.forEach(({ id }) => debouncedSave(() => saveOne(id), 300, id));
+      showToast('Reorder undone');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [updateActivity, saveOne, showToast]);
 
   // ─── FILTERS ───
   const st = getSectionState('gantt');
@@ -199,6 +225,14 @@ export default function GanttView() {
       (PHASE_RANK_GANTT.get(a) ?? 9999) - (PHASE_RANK_GANTT.get(b) ?? 9999)
     ),
   [grouped]);
+
+  // Collapse all trades by default on first load
+  useEffect(() => {
+    if (!tradesInitialized && trades.length > 0) {
+      setCollapsedTrades(new Set(trades));
+      setTradesInitialized(true);
+    }
+  }, [trades, tradesInitialized]);
 
   // Label map: activity → "N-X", subtask → "N-X-S-1"
   const labelMap = useMemo(() => {
@@ -278,15 +312,17 @@ export default function GanttView() {
     let flatIdx = 0;
     trades.forEach((trade) => {
       r.push({ type: 'trade', trade, idx: flatIdx++ });
+      if (collapsedTrades.has(trade)) return;
       grouped[trade].forEach((act) => {
         r.push({ type: 'activity', trade, activity: act, idx: flatIdx++ });
+        if (collapsedActivities.has(act.id)) return;
         activities
           .filter((s) => s.parent_id === act.id)
           .forEach((sub) => r.push({ type: 'activity', trade, activity: sub, idx: flatIdx++, isSubtask: true }));
       });
     });
     return r;
-  }, [trades, grouped, activities]);
+  }, [trades, grouped, activities, collapsedTrades, collapsedActivities]);
 
   // Activity-id → cumulative Y coordinate (top of its row) and total chart height.
   // Needed for dependency arrows (#16) because trade headers (30px) and activity
@@ -517,12 +553,9 @@ export default function GanttView() {
 
       // Drop onto another row.
       // - Different trade → reassign trade/sub/area/floor, keep dates.
-      // - Same trade → POSITIONAL SWAP: the dragged and target activities
-      //   swap their start_date, finish_date, duration, and sort_order so
-      //   they literally trade places in the Gantt.
+      // - Same trade → INSERT reorder: dragged item moves to target position,
+      //   items between shift by one slot (like array splice).
       let reordered = false;
-      let swapTargetId: string | null = null;
-      let swapTargetUpdates: Partial<Activity> | null = null;
       if (dropTargetId) {
         const targetAct = activities.find((x) => x.id === dropTargetId);
         if (targetAct && targetAct.id !== a.id) {
@@ -535,51 +568,45 @@ export default function GanttView() {
             updates.floor = targetAct.floor;
             showToast(`${a.id} → ${targetAct.trade} (was ${oldTrade})`);
           } else {
-            // Same trade: swap positions.
-            updates.start = targetAct.start;
-            updates.finish = targetAct.finish;
-            updates.duration = targetAct.duration;
-            updates.sort_order = targetAct.sort_order ?? 0;
+            // Same trade: insert-reorder via sort_order reassignment.
+            // Get all non-subtask activities in this trade, sorted by current order.
+            const tradePeers = activities
+              .filter((x) => x.trade === a.trade && !x.parent_id)
+              .sort((x, y) => ((x.sort_order ?? 0) - (y.sort_order ?? 0)) || x.id.localeCompare(y.id));
 
-            swapTargetId = targetAct.id;
-            swapTargetUpdates = {
-              start: a.start,
-              finish: a.finish,
-              duration: a.duration,
-              sort_order: a.sort_order ?? 0,
-            };
-            reordered = true;
-            showToast(`Swapped: ${a.id} ↔ ${targetAct.id}`);
+            const fromIdx = tradePeers.findIndex((x) => x.id === a.id);
+            const toIdx   = tradePeers.findIndex((x) => x.id === targetAct.id);
+            pushUndo(tradePeers);
+            if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
+              // Splice: remove from source, insert at destination
+              const reordered_arr = [...tradePeers];
+              const [moved] = reordered_arr.splice(fromIdx, 1);
+              reordered_arr.splice(toIdx, 0, moved);
+
+              // Assign contiguous sort_order values — single bulk update for instant re-render
+              const bulkUpdates = reordered_arr.map((act, idx) => ({
+                id: act.id, changes: { sort_order: (idx + 1) * 10 },
+              }));
+              updateActivitiesBulk(bulkUpdates);
+              bulkUpdates.forEach(({ id }) => debouncedSave(() => saveOne(id), 300, id));
+              reordered = true;
+              showToast(`Moved ${a.id} to position ${toIdx + 1}`);
+            }
           }
         }
       }
-      // Silence unused-var warning for span/curFinish when swap path used.
       void span; void curFinish;
 
-      // Horizontal date shift — only if the user didn't already reorder (reorder
-      // sets explicit dates; applying delta on top would double-move). Bug #5:
-      // shift only date(s) that exist.
+      // Horizontal date shift — only if no reorder happened.
       if (!reordered && daysDelta !== 0) {
         if (a.start) updates.start = isoDate(addDays(a.start, daysDelta));
         if (a.finish) updates.finish = isoDate(addDays(a.finish, daysDelta));
       }
 
-      if (Object.keys(updates).length > 0) {
-        console.log('[Gantt drag] writing updates', { id: a.id, reordered, daysDelta, dropTargetId, updates });
+      if (!reordered && Object.keys(updates).length > 0) {
         updateActivity(a.id, updates);
-        if (!reordered) {
-          showToast(`${a.id}: ${fmt(updates.start || a.start)} – ${fmt(updates.finish || a.finish)} | ${updates.trade || a.trade}`);
-        }
+        showToast(`${a.id}: ${fmt(updates.start || a.start)} – ${fmt(updates.finish || a.finish)} | ${updates.trade || a.trade}`);
         debouncedSave(() => saveOne(a.id), 300, a.id);
-
-        // Persist the other half of a positional swap.
-        if (swapTargetId && swapTargetUpdates) {
-          console.log('[Gantt drag] swap partner updates', { id: swapTargetId, updates: swapTargetUpdates });
-          updateActivity(swapTargetId, swapTargetUpdates);
-          debouncedSave(() => saveOne(swapTargetId!), 300, swapTargetId);
-        }
-      } else {
-        console.log('[Gantt drag] no changes to write', { id: a.id, dropTargetId, daysDelta });
       }
     };
     document.addEventListener('mousemove', onMove);
@@ -859,7 +886,11 @@ export default function GanttView() {
           </div>
           {rows.map((row, i) =>
             row.type === 'trade' ? (
-              <div key={`t-${i}`} className="flex items-center px-3 font-bold text-[11px] bg-muted/50 border-b border-border/50 gap-1.5" style={{ height: TRADE_H }}>
+              <div key={`t-${i}`} className="flex items-center px-2 font-bold text-[11px] bg-muted/50 border-b border-border/50 gap-1.5 cursor-pointer hover:bg-muted/80 transition-colors select-none" style={{ height: TRADE_H }}
+                onClick={() => setCollapsedTrades((prev) => { const next = new Set(prev); next.has(row.trade) ? next.delete(row.trade) : next.add(row.trade); return next; })}>
+                {collapsedTrades.has(row.trade)
+                  ? <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                  : <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />}
                 <span className="font-mono text-[10px] text-muted-foreground shrink-0">
                   {trades.indexOf(row.trade) + 1}
                 </span>
@@ -867,11 +898,30 @@ export default function GanttView() {
                 <span className="ml-auto text-[9px] font-normal text-muted-foreground shrink-0">({grouped[row.trade].length})</span>
               </div>
             ) : (
-              <div key={`a-${row.activity!.id}`} data-left-row={row.activity!.id} className="flex items-center text-[11px] cursor-pointer border-b border-border/30 hover:bg-primary/5 truncate" style={{ height: ROW_H, paddingLeft: row.isSubtask ? 20 : 12, paddingRight: 8 }} onClick={() => { if (ganttSidebarOn) setSelectedActivity(row.activity!.id); }}>
-                {row.isSubtask && <span className="w-0.5 h-3 bg-slate-400/50 rounded-full mr-1.5 shrink-0" />}
-                <span className="font-mono text-[10px] mr-1.5 shrink-0" style={{ color: row.isSubtask ? '#94a3b8' : '#3b82f6' }}>{labelMap[row.activity!.id] ?? row.activity!.id}</span>
-                <span className="truncate">{row.activity!.name}</span>
-              </div>
+              (() => {
+                const act = row.activity!;
+                const hasSubs = !row.isSubtask && activities.some((s) => s.parent_id === act.id);
+                const isCollapsed = collapsedActivities.has(act.id);
+                const toggleCollapse = (e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  setCollapsedActivities((prev) => { const next = new Set(prev); next.has(act.id) ? next.delete(act.id) : next.add(act.id); return next; });
+                };
+                return (
+                  <div key={`a-${i}`} data-left-row={act.id} className="flex items-center text-[11px] cursor-pointer border-b border-border/30 hover:bg-primary/5" style={{ height: ROW_H, paddingLeft: row.isSubtask ? 20 : 8, paddingRight: 8 }} onClick={() => { if (ganttSidebarOn) setSelectedActivity(act.id); }}>
+                    {hasSubs ? (
+                      <button className="shrink-0 p-0.5 mr-0.5 rounded hover:bg-primary/10 text-muted-foreground" onClick={toggleCollapse}>
+                        {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      </button>
+                    ) : row.isSubtask ? (
+                      <span className="w-0.5 h-3 bg-slate-400/50 rounded-full mr-1.5 shrink-0" />
+                    ) : (
+                      <span className="w-4 shrink-0" />
+                    )}
+                    <span className="font-mono text-[10px] mr-1.5 shrink-0" style={{ color: row.isSubtask ? '#94a3b8' : '#3b82f6' }}>{labelMap[act.id] ?? act.id}</span>
+                    <span className="truncate">{act.name}</span>
+                  </div>
+                );
+              })()
             )
           )}
         </div>
@@ -957,41 +1007,102 @@ export default function GanttView() {
 
             {/* Activity rows */}
             {rows.map((row, ri) => {
-              if (row.type === 'trade') return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }} />;
+              if (row.type === 'trade') {
+                const isCollapsed = collapsedTrades.has(row.trade);
+                if (!isCollapsed) return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }} />;
+                // Collapsed: show summary bar spanning all activities in this trade
+                const tradeActs = grouped[row.trade] || [];
+                const tradeDates = tradeActs.flatMap((act) => {
+                  // Include subtask dates too
+                  const allActs = [act, ...activities.filter((s) => s.parent_id === act.id)];
+                  return allActs.flatMap((x) => {
+                    const dur = Math.max(1, x.duration || 1);
+                    let ss = parseDate(x.start); let sf = parseDate(x.finish);
+                    if (ss && !sf) sf = addDays(ss, dur - 1);
+                    else if (sf && !ss) ss = addDays(sf, -(dur - 1));
+                    return ss && sf ? [{ s: ss, f: sf }] : [];
+                  });
+                });
+                if (!tradeDates.length) return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }} />;
+                const ts = new Date(Math.min(...tradeDates.map((d) => d.s.getTime())));
+                const tf = new Date(Math.max(...tradeDates.map((d) => d.f.getTime())));
+                const tbX = diffDays(projStart, ts) * pxDay;
+                const tbW = Math.max(pxDay, (diffDays(ts, tf) + 1) * pxDay);
+                const color = getTradeColor(tradeActs[0]?.trade ?? '');
+                return (
+                  <div key={`tr-${ri}`} className="relative flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }}>
+                    <div className="absolute" style={{ left: tbX, top: 5, width: tbW, height: TRADE_H - 10, borderRadius: 4 }}>
+                      <div className="absolute inset-0 rounded" style={{ background: color, opacity: 0.2 }} />
+                      <div className="absolute inset-0 rounded border-2" style={{ borderColor: color, opacity: 0.7 }} />
+                      {tbW > 60 && <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-bold pointer-events-none truncate" style={{ color, maxWidth: tbW - 16 }}>{fmt(ts)} – {fmt(tf)}</span>}
+                    </div>
+                  </div>
+                );
+              }
 
               const a = row.activity!;
-              // Resolve start/finish — if only one endpoint exists, derive the
-              // other from `duration` so a 5-day activity with only a finish
-              // date still renders as a 5-day bar, not collapsed to 1 day.
-              const dur = Math.max(1, a.duration || 1);
-              let s = parseDate(a.start);
-              let f = parseDate(a.finish);
-              if (s && !f) f = addDays(s, dur - 1);
-              else if (f && !s) s = addDays(f, -(dur - 1));
-              // Undated: place a 1-day placeholder bar at today
-              if (!s || !f) { s = TODAY; f = TODAY; }
+              const color = getTradeColor(a.trade);
 
-              // Inclusive-of-both-endpoints convention (bug #3):
-              //   1-day bar (start == finish) → 1 * pxDay wide
-              //   N-day bar (finish = start + N-1) → N * pxDay wide
+              // For parent activities: span bar across all subtask dates (only when expanded)
+              const subs = !row.isSubtask && !collapsedActivities.has(a.id) ? activities.filter((s) => s.parent_id === a.id) : [];
+              const isSummary = subs.length > 0;
+
+              let s: Date | null, f: Date | null;
+              if (isSummary) {
+                // Summary bar: min subtask start → max subtask finish
+                const subDates = subs.flatMap((sub) => {
+                  const dur = Math.max(1, sub.duration || 1);
+                  let ss = parseDate(sub.start);
+                  let sf = parseDate(sub.finish);
+                  if (ss && !sf) sf = addDays(ss, dur - 1);
+                  else if (sf && !ss) ss = addDays(sf, -(dur - 1));
+                  return ss && sf ? [{ s: ss, f: sf }] : [];
+                });
+                s = subDates.length ? new Date(Math.min(...subDates.map((d) => d.s.getTime()))) : parseDate(a.start);
+                f = subDates.length ? new Date(Math.max(...subDates.map((d) => d.f.getTime()))) : parseDate(a.finish);
+                if (!s) s = TODAY;
+                if (!f) f = TODAY;
+              } else {
+                const dur = Math.max(1, a.duration || 1);
+                s = parseDate(a.start);
+                f = parseDate(a.finish);
+                if (s && !f) f = addDays(s, dur - 1);
+                else if (f && !s) s = addDays(f, -(dur - 1));
+                if (!s || !f) { s = TODAY; f = TODAY; }
+              }
+
               const barX = diffDays(projStart, s) * pxDay;
               const barW = Math.max(pxDay, (diffDays(s, f) + 1) * pxDay);
-              const color = getTradeColor(a.trade);
               const pctW = (a.pct / 100) * barW;
+
+              if (isSummary) {
+                // Summary bar: draggable + resizable, slightly bolder style
+                return (
+                  <div key={`bar-${ri}`} data-gantt-row={a.id} className="relative border-b border-border/20" style={{ height: ROW_H, width: timelineW }}>
+                    <div data-bar="true" data-start={a.start} data-finish={a.finish} className="absolute cursor-grab active:cursor-grabbing group" style={{ left: barX, top: BAR_Y, width: barW, height: BAR_H, borderRadius: 4 }} onMouseDown={(e) => handleBarMouseDown(e, a.id)}>
+                      <div className="absolute inset-0 rounded" style={{ background: color, opacity: 0.25 }} />
+                      <div className="absolute top-0 bottom-0 left-0 rounded-l" style={{ width: pctW, background: color, opacity: 0.7 }} />
+                      <div className="absolute inset-0 rounded border-2" style={{ borderColor: color, opacity: 0.8 }} />
+                      {barW > 50 && <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-bold text-white pointer-events-none truncate" style={{ maxWidth: barW - 20 }}><span className="opacity-80 mr-1">{labelMap[a.id]}</span>{a.name}</span>}
+                      <div data-handle="left" className="absolute left-0 top-0 bottom-0 w-2 cursor-w-resize opacity-0 group-hover:opacity-100 transition-opacity z-10" style={{ background: `linear-gradient(to right, ${color}, transparent)` }} onMouseDown={(e) => handleResizeMouseDown(e, a.id, 'left')} />
+                      <div data-handle="right" className="absolute right-0 top-0 bottom-0 w-2 cursor-e-resize opacity-0 group-hover:opacity-100 transition-opacity z-10" style={{ background: `linear-gradient(to left, ${color}, transparent)` }} onMouseDown={(e) => handleResizeMouseDown(e, a.id, 'right')} />
+                      <div className="absolute -top-8 left-0 hidden group-hover:flex items-center bg-foreground text-background text-[9px] font-medium px-2 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none z-20">
+                        {a.id} · {fmt(s)} – {fmt(f)} · {subs.length} subtask{subs.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div key={a.id} data-gantt-row={a.id} className="relative border-b border-border/20" style={{ height: ROW_H, width: timelineW }}>
-                  <div data-bar="true" className="absolute cursor-grab active:cursor-grabbing group" style={{ left: barX, top: BAR_Y, width: barW, height: BAR_H, borderRadius: 4 }} onMouseDown={(e) => handleBarMouseDown(e, a.id)}>
+                  <div data-bar="true" data-start={a.start} data-finish={a.finish} className="absolute cursor-grab active:cursor-grabbing group" style={{ left: barX, top: BAR_Y, width: barW, height: BAR_H, borderRadius: 4 }} onMouseDown={(e) => handleBarMouseDown(e, a.id)}>
                     <div className="absolute inset-0 rounded" style={{ background: color, opacity: 0.15 }} />
                     <div className="absolute top-0 bottom-0 left-0 rounded-l" style={{ width: pctW, background: color, opacity: 0.65 }} />
                     <div className="absolute inset-0 rounded border" style={{ borderColor: color, opacity: 0.5 }} />
-                    {barW > 50 && <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-semibold text-white pointer-events-none truncate" style={{ maxWidth: barW - 20 }}>{a.name}</span>}
-
-                    {/* Resize handles */}
+                    {barW > 50 && <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-semibold text-white pointer-events-none truncate" style={{ maxWidth: barW - 20 }}><span className="opacity-70 mr-1">{labelMap[a.id]}</span>{a.name}</span>}
                     <div data-handle="left" className="absolute left-0 top-0 bottom-0 w-2 cursor-w-resize opacity-0 group-hover:opacity-100 transition-opacity z-10" style={{ background: `linear-gradient(to right, ${color}, transparent)` }} onMouseDown={(e) => handleResizeMouseDown(e, a.id, 'left')} />
                     <div data-handle="right" className="absolute right-0 top-0 bottom-0 w-2 cursor-e-resize opacity-0 group-hover:opacity-100 transition-opacity z-10" style={{ background: `linear-gradient(to left, ${color}, transparent)` }} onMouseDown={(e) => handleResizeMouseDown(e, a.id, 'right')} />
-
-                    {/* Tooltip */}
                     <div className="absolute -top-8 left-0 hidden group-hover:flex items-center bg-foreground text-background text-[9px] font-medium px-2 py-0.5 rounded shadow-lg whitespace-nowrap pointer-events-none z-20">
                       {a.id} · {fmt(a.start)} – {fmt(a.finish)} · {a.duration}d · {a.pct}%
                     </div>
