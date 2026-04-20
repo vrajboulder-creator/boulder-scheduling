@@ -11,6 +11,7 @@ import PctBar from './PctBar';
 import { Badge } from './badge';
 import { Card } from './card';
 import { Calendar, Clock, MapPin, ChevronRight, ChevronDown, Plus, Check, X, Link2 } from 'lucide-react';
+import { AssignButton } from './AssignPopover';
 
 interface Props {
   items: Activity[];
@@ -726,6 +727,9 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
                                       <span className="w-0.5 h-4 bg-primary/30 rounded-full shrink-0" />
                                       <span className="font-mono text-[10px] text-muted-foreground/50 shrink-0">{s.id}</span>
                                       <span className="flex-1 truncate font-medium">{s.name}</span>
+                                      <div className="flex-1 flex justify-center">
+                                        <AssignButton subtaskId={s.id} assigneeId={s.assignee_id} />
+                                      </div>
                                       <StatusBadge status={s.status} />
                                       <span className="text-[10px] text-muted-foreground shrink-0">{fmt(s.start)} – {fmt(s.finish)}</span>
                                     </div>

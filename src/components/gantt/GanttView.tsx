@@ -128,92 +128,6 @@ export default function GanttView() {
   const st = getSectionState('gantt');
 
   const [downloading, setDownloading] = useState(false);
-  const downloadPdf = useCallback(async () => {
-    const el = ganttCardRef.current;
-    if (!el) return;
-    setDownloading(true);
-    try {
-      const { toCanvas } = await import('html-to-image');
-      const jsPDF = (await import('jspdf')).default;
-
-      // Expand all scroll containers so full content renders
-      const saves: { el: HTMLElement; maxH: string; h: string; w: string; overflow: string }[] = [];
-      const expand = (node: HTMLElement) => {
-        saves.push({ el: node, maxH: node.style.maxHeight, h: node.style.height, w: node.style.width, overflow: node.style.overflow });
-        node.style.maxHeight = 'none';
-        node.style.height = 'auto';
-        node.style.overflow = 'visible';
-      };
-      expand(el);
-      el.querySelectorAll<HTMLElement>('.overflow-y-auto, .overflow-auto, .overflow-x-auto').forEach(expand);
-
-      // Set explicit dimensions so html-to-image captures full scroll area
-      const fullW = el.scrollWidth;
-      const fullH = el.scrollHeight;
-      el.style.width = `${fullW}px`;
-      el.style.height = `${fullH}px`;
-
-      await new Promise((r) => setTimeout(r, 200));
-
-      const canvas = await toCanvas(el, {
-        pixelRatio: 2,
-        backgroundColor: '#ffffff',
-        skipFonts: true,
-        width: fullW,
-        height: fullH,
-      });
-
-      // Restore all
-      saves.forEach(({ el: n, maxH, h, w, overflow }) => {
-        n.style.maxHeight = maxH; n.style.height = h; n.style.width = w; n.style.overflow = overflow;
-      });
-
-      const imgW = canvas.width;
-      const imgH = canvas.height;
-
-      // Wide landscape PDF — full width of Gantt, user scrolls left-right
-      // Page height = A4 landscape height (210mm). Width scales to fit image aspect ratio.
-      const pdfH = 210;
-      const pdfW = Math.ceil((imgW / imgH) * pdfH);
-
-      // jsPDF max dimension = 14400. If too wide, split into pages.
-      const MAX_DIM = 14400;
-
-      if (pdfW <= MAX_DIM) {
-        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pdfW, pdfH] });
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pdfW, pdfH);
-        const filterLabel = [st.trade, st.area, st.status, st.phase, hideUndated ? 'dated-only' : '', datePreset !== 'all' ? datePreset : ''].filter(Boolean).join('_') || 'all';
-        pdf.save(`gantt_${filterLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
-      } else {
-        // Split horizontally into multiple pages
-        const pageWidthMm = MAX_DIM;
-        const totalPages = Math.ceil(pdfW / pageWidthMm);
-        const sliceW = Math.floor(imgW / totalPages);
-        const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [pageWidthMm, pdfH] });
-
-        for (let i = 0; i < totalPages; i++) {
-          if (i > 0) pdf.addPage([pageWidthMm, pdfH], 'landscape');
-          const sx = i * sliceW;
-          const sw = Math.min(sliceW, imgW - sx);
-          const pageCanvas = document.createElement('canvas');
-          pageCanvas.width = sw;
-          pageCanvas.height = imgH;
-          const pCtx = pageCanvas.getContext('2d')!;
-          pCtx.fillStyle = '#ffffff';
-          pCtx.fillRect(0, 0, sw, imgH);
-          pCtx.drawImage(canvas, sx, 0, sw, imgH, 0, 0, sw, imgH);
-          const pw = (sw / imgH) * pdfH;
-          pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pw, pdfH);
-        }
-        const filterLabel = [st.trade, st.area, st.status, st.phase, hideUndated ? 'dated-only' : '', datePreset !== 'all' ? datePreset : ''].filter(Boolean).join('_') || 'all';
-        pdf.save(`gantt_${filterLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
-      }
-    } catch (e) {
-      console.error('PDF export failed:', e);
-    } finally {
-      setDownloading(false);
-    }
-  }, [st, hideUndated, datePreset]);
 
   const allFiltered = useMemo(
     () => {
@@ -291,6 +205,22 @@ export default function GanttView() {
     });
     return map;
   }, [trades, grouped]);
+
+  const downloadPdf = useCallback(async () => {
+    setDownloading(true);
+    try {
+      const { exportGanttPdf } = await import('./GanttPdfExport');
+      const groups = trades.map((phase) => ({ phase, activities: grouped[phase] || [] }));
+      const filterLabel = [st.trade, st.area, st.status, st.phase, hideUndated ? 'dated-only' : '', datePreset !== 'all' ? datePreset : ''].filter(Boolean).join(', ');
+      const proj = useAppStore.getState();
+      const projectName = proj.projects[proj.currentProject]?.name || 'Project Schedule';
+      await exportGanttPdf(groups, projectName, filterLabel, filtered.length, labelMap);
+    } catch (e) {
+      console.error('PDF export failed:', e);
+    } finally {
+      setDownloading(false);
+    }
+  }, [trades, grouped, st, hideUndated, datePreset, filtered.length, labelMap]);
 
   // Date range for timeline. Mirror the bar-rendering logic so the timeline
   // bounds include synthesized endpoints (duration-derived) — otherwise a

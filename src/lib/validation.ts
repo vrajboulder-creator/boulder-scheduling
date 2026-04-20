@@ -5,7 +5,7 @@ const VALID_PRIORITIES: ActivityPriority[] = ['Critical', 'High', 'Normal', 'Low
 
 // Fields clients are allowed to send — everything else is stripped before hitting the DB
 export const ALLOWED_ACTIVITY_FIELDS = [
-  'id', 'project_id', 'parent_id', 'name', 'trade', 'sub', 'area', 'floor',
+  'id', 'project_id', 'parent_id', 'assignee_id', 'name', 'trade', 'sub', 'area', 'floor',
   'phase', 'start_date', 'finish_date', 'duration', 'status', 'pct',
   'priority', 'blocker', 'milestone', 'lookahead', 'notes', 'sort_order',
 ] as const;

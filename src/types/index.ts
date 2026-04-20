@@ -7,6 +7,16 @@ export type LinkType = 'FS' | 'FF' | 'SS' | 'SF';
 export type LinkedItemType = 'RFI' | 'Submittal' | 'Inspection' | 'Procurement' | 'Permit' | 'Punch' | 'CO';
 export type UserRole = 'Admin' | 'PM' | 'Superintendent' | 'Field' | 'Subcontractor' | 'Viewer';
 
+export interface AppUser {
+  id: string;
+  full_name: string;
+  role: UserRole;
+  company: string;
+  phone: string;
+  email?: string;
+  created_at?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -24,6 +34,7 @@ export interface ActivityDB {
   id: string;
   project_id: string | null;
   parent_id?: string | null;
+  assignee_id?: string | null;
   name: string;
   trade: string;
   sub: string;
@@ -49,6 +60,7 @@ export interface Activity {
   id: string;
   project_id: string | null;
   parent_id?: string | null;
+  assignee_id?: string | null;
   name: string;
   trade: string;
   sub: string;

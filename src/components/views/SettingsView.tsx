@@ -6,9 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SelectNative } from '@/components/ui/select-native';
 import { Slider } from '@/components/ui/slider';
-import { Settings2, Folder, LayoutGrid, Calendar, MapPin, CloudSun, Trash2, Thermometer, Wind, Droplets, BookOpen, Link2 } from 'lucide-react';
+import { Settings2, Folder, LayoutGrid, Calendar, MapPin, CloudSun, Trash2, Thermometer, Wind, Droplets, BookOpen, Link2, Users } from 'lucide-react';
 import { WeatherIcon } from '@/components/ui/WeatherCard';
 import { fmt } from '@/lib/helpers';
+import { TeamMembersManager } from '@/components/ui/AssignPopover';
 
 export default function SettingsView() {
   const projects = useAppStore((s) => s.projects);
@@ -221,6 +222,11 @@ finish = start + duration − 1</pre>
             </ul>
           </ManualBlock>
         </div>
+      </SettingSection>
+
+      {/* ── Team Members ── */}
+      <SettingSection icon={<Users className="h-3.5 w-3.5" />} title="Team Members">
+        <TeamMembersManager />
       </SettingSection>
 
       {/* ── Danger / Utilities ── */}

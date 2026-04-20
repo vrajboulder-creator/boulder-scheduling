@@ -22,7 +22,7 @@ const PROJECT_COORDS: Record<string, { lat: number; lon: number }> = {
 
 export default function HomePage() {
   const { currentProject, projects, setActivities, setProjects, setCurrentProject, updateProjectWeather, showToast } = useAppStore();
-  const { loadAll } = useApi();
+  const { loadAll, loadUsers } = useApi();
 
   // Boot: load projects, then activities for the selected project
   useEffect(() => {
@@ -54,8 +54,9 @@ export default function HomePage() {
         return;
       }
 
-      // 2. Load activities for the selected project
+      // 2. Load activities + users for the selected project
       const projectId = useAppStore.getState().currentProjectId;
+      loadUsers();
       const loaded = await loadAll(projectId);
       if (loaded) {
         const acts = useAppStore.getState().activities;

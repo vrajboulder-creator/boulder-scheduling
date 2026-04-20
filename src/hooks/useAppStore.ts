@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { toast } from 'sonner';
-import type { Activity, ViewType, ProjectConfig, WeatherDetail, ActivityDB, LinkedItemRef } from '@/types';
+import type { Activity, ViewType, ProjectConfig, WeatherDetail, ActivityDB, LinkedItemRef, AppUser } from '@/types';
 import { isoDate, resolveAllDates } from '@/lib/helpers';
 import type { ActivityLink } from '@/types';
 
@@ -85,6 +85,13 @@ interface AppState {
   nextId: number;
   genId: () => string;
   genSubtaskId: (parentId: string) => string;
+
+  // Users
+  users: AppUser[];
+  setUsers: (users: AppUser[]) => void;
+  addUser: (u: AppUser) => void;
+  updateUser: (id: string, updates: Partial<AppUser>) => void;
+  removeUser: (id: string) => void;
 
   // Toast
   toastMessage: string;
@@ -238,6 +245,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     return `${parentId}-ST-${existing + 1}`;
   },
 
+  users: [],
+  setUsers: (users) => set({ users }),
+  addUser: (u) => set((s) => ({ users: [...s.users, u] })),
+  updateUser: (id, updates) =>
+    set((s) => ({ users: s.users.map((u) => (u.id === id ? { ...u, ...updates } : u)) })),
+  removeUser: (id) => set((s) => ({ users: s.users.filter((u) => u.id !== id) })),
+
   toastMessage: '',
   showToast: (msg) => {
     toast(msg);
@@ -251,6 +265,7 @@ export function dbToFrontend(row: ActivityDB & { _predecessors?: string[]; _succ
     id: row.id,
     project_id: row.project_id || null,
     parent_id: row.parent_id ?? null,
+    assignee_id: row.assignee_id ?? null,
     name: row.name,
     trade: row.trade || 'General / GC',
     sub: row.sub || '',
@@ -298,5 +313,6 @@ export function frontendToDb(a: Activity): Record<string, unknown> {
     notes: a.notes || '',
     sort_order: a.sort_order ?? 0,
     parent_id: a.parent_id ?? null,
+    assignee_id: a.assignee_id ?? null,
   };
 }

@@ -2,12 +2,12 @@
 
 import { useAppStore, dbToFrontend, frontendToDb } from './useAppStore';
 import { resolveAllDates } from '@/lib/helpers';
-import type { Activity, ActivityDB, LinkedItemRef, LinkType } from '@/types';
+import type { Activity, ActivityDB, LinkedItemRef, LinkType, AppUser } from '@/types';
 
 const API_BASE = '/api/activities';
 
 export function useApi() {
-  const { setActivities, setActivityLinks, activities } = useAppStore();
+  const { setActivities, setActivityLinks, activities, setUsers } = useAppStore();
 
   async function loadAll(projectId?: string | null): Promise<boolean> {
     try {
@@ -170,7 +170,57 @@ export function useApi() {
     } catch { return false; }
   }
 
-  return { loadAll, saveAll, saveOne, createOne, deleteOne, addLink, removeLink, updateLinkType };
+  async function patchOne(id: string, updates: Record<string, unknown>): Promise<boolean> {
+    try {
+      const resp = await fetch(`${API_BASE}/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  async function loadUsers(): Promise<void> {
+    try {
+      const resp = await fetch('/api/users');
+      if (!resp.ok) return;
+      const data: AppUser[] = await resp.json();
+      setUsers(data);
+    } catch {/* ignore */}
+  }
+
+  async function createUser(user: Omit<AppUser, 'id' | 'created_at'>): Promise<AppUser | null> {
+    try {
+      const resp = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(user),
+      });
+      if (!resp.ok) return null;
+      return await resp.json();
+    } catch { return null; }
+  }
+
+  async function updateUser(id: string, updates: Partial<Omit<AppUser, 'id' | 'created_at'>>): Promise<boolean> {
+    try {
+      const resp = await fetch(`/api/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  async function deleteUser(id: string): Promise<boolean> {
+    try {
+      const resp = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  return { loadAll, saveAll, saveOne, createOne, deleteOne, addLink, removeLink, updateLinkType, patchOne, loadUsers, createUser, updateUser, deleteUser };
 }
 
 // Per-key debounced save. Each activity id gets its own timer so rapid
