@@ -372,6 +372,20 @@ function ActivityTableInner({ items, mode = 'list' }: Props) {
       if (!map[phase]) map[phase] = [];
       map[phase].push(a);
     });
+    // Within each phase, sort activities by CSV row order (id numeric suffix)
+    // so rows match the source spreadsheet sequence — same as Gantt.
+    const csvRowRank = (id: string): number => {
+      const m = id.match(/-(\d{3,})(?:-|$)/);
+      return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+    };
+    Object.values(map).forEach((arr) =>
+      arr.sort((a, b) => {
+        const ra = csvRowRank(a.id);
+        const rb = csvRowRank(b.id);
+        if (ra !== rb) return ra - rb;
+        return a.id.localeCompare(b.id);
+      })
+    );
     // Sort phases by canonical CSV order; unknown phases fall to the end
     // Normalize by stripping trailing " [TPSJ]" in case some DB rows still have it
     const normalize = (p: string) => p.replace(/ \[TPSJ\]$/, '').trim();

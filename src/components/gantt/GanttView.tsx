@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
-import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange, Download, Calendar, ChevronDown, ChevronRight } from 'lucide-react';
+import { Minus, Plus, Maximize2, Minimize2, BarChart3, PanelRightOpen, PanelRightClose, X, CalendarRange, Download, Calendar, ChevronDown, ChevronRight, CalendarDays, CalendarClock, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SUBS } from '@/data/constants';
+import StatusLegend from '@/components/ui/StatusLegend';
 import type { Activity } from '@/types';
 
 const ROW_H = 28;
@@ -18,7 +19,8 @@ const BAR_H = 20;
 const BAR_Y = 4;
 const TRADE_H = 30;
 
-// Canonical phase order — same list as ActivityTable.tsx
+// Canonical phase order — same list as ActivityTable.tsx. Phases render in
+// this order so the Gantt matches the source CSV / Master Schedule sequence.
 const PHASE_ORDER_GANTT = [
   'Owner Request for Proposal','Bid Preparation','Bid Submission to Owner','Notice to Proceed',
   'Pre-Construction (2-3 months before Start)','Pre-Mobilization Requirements',
@@ -80,8 +82,16 @@ const PHASE_RANK_GANTT = new Map(PHASE_ORDER_GANTT.map((p, i) => [p, i]));
 const normalizePhase = (p: string) => p.replace(/ \[TPSJ\]$/, '').trim();
 
 // ─── DATE RANGE PRESETS ───
-type DatePreset = 'all' | 'this-week' | 'this-month' | '3-months' | 'custom';
-function getPresetRange(preset: DatePreset, allActs: Activity[]): { from: Date; to: Date } | null {
+type DatePreset =
+  | 'all'
+  | 'this-week'
+  | 'this-month'
+  | '3-months'
+  | 'this-quarter'
+  | 'next-quarter'
+  | 'this-year'
+  | 'custom';
+function getPresetRange(preset: DatePreset, _allActs: Activity[]): { from: Date; to: Date } | null {
   const now = new Date(); now.setHours(0, 0, 0, 0);
   switch (preset) {
     case 'this-week': {
@@ -95,6 +105,24 @@ function getPresetRange(preset: DatePreset, allActs: Activity[]): { from: Date; 
     }
     case '3-months': {
       return { from: addDays(now, -7), to: addDays(now, 90) };
+    }
+    case 'this-quarter': {
+      // Q1=Jan-Mar, Q2=Apr-Jun, Q3=Jul-Sep, Q4=Oct-Dec
+      const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+      const start = new Date(now.getFullYear(), qStartMonth, 1);
+      const end = new Date(now.getFullYear(), qStartMonth + 3, 0);
+      return { from: start, to: end };
+    }
+    case 'next-quarter': {
+      const qStartMonth = Math.floor(now.getMonth() / 3) * 3 + 3;
+      const start = new Date(now.getFullYear(), qStartMonth, 1);
+      const end = new Date(now.getFullYear(), qStartMonth + 3, 0);
+      return { from: start, to: end };
+    }
+    case 'this-year': {
+      const start = new Date(now.getFullYear(), 0, 1);
+      const end = new Date(now.getFullYear(), 11, 31);
+      return { from: start, to: end };
     }
     case 'all':
     default:
@@ -126,6 +154,81 @@ export default function GanttView() {
   const [datePreset, setDatePreset] = useState<DatePreset>(urlFrom && urlTo ? 'custom' : 'all');
   const [customFrom, setCustomFrom] = useState(urlFrom);
   const [customTo, setCustomTo]     = useState(urlTo);
+
+  // ─── TIMELINE SCALE (day / week / month / quarter / year) ───
+  // Each scale re-labels the header and auto-adjusts pxDay so the view stays
+  // compact. Quarter & year scales use reduced pxDay and render only top-level
+  // labels (Q1/Q2… and year) so the header doesn't explode into dozens of
+  // month ticks. Bars still render by day-offset so geometry is unchanged.
+  type Scale = 'day' | 'week' | 'month' | 'quarter' | 'year';
+  const [timelineScale, setTimelineScale] = useState<Scale>('day');
+  function changeScale(next: Scale) {
+    setTimelineScale(next);
+    // Auto-fit px-per-day so each scale reads nicely
+    if (next === 'day')     setGanttPxPerDay(22);
+    if (next === 'week')    setGanttPxPerDay(10);
+    if (next === 'month')   setGanttPxPerDay(4);
+    if (next === 'quarter') setGanttPxPerDay(2);
+    if (next === 'year')    setGanttPxPerDay(0.8);
+  }
+
+  // ─── COMPACT MODE PER SCALE ───
+  // Row height, bar height, and minimum bar width shrink as the scale gets
+  // coarser. All rows still render — they just take less vertical space so
+  // Quarter/Year views feel like a "dense overview" while Day stays roomy.
+  const scaleMetrics = (() => {
+    switch (timelineScale) {
+      case 'year':    return { rowH: 16, barH: 10, barY: 3, tradeH: 18, barMinPx: 4 };
+      case 'quarter': return { rowH: 18, barH: 12, barY: 3, tradeH: 20, barMinPx: 6 };
+      case 'month':   return { rowH: 22, barH: 16, barY: 3, tradeH: 24, barMinPx: 8 };
+      case 'week':    return { rowH: 26, barH: 18, barY: 4, tradeH: 28, barMinPx: 10 };
+      case 'day':
+      default:        return { rowH: 28, barH: 20, barY: 4, tradeH: 30, barMinPx: 12 };
+    }
+  })();
+  const ROW_H_S    = scaleMetrics.rowH;
+  const BAR_H_S    = scaleMetrics.barH;
+  const BAR_Y_S    = scaleMetrics.barY;
+  const TRADE_H_S  = scaleMetrics.tradeH;
+  const BAR_MIN_PX = scaleMetrics.barMinPx;
+
+  // Reset activity order to the source CSV sequence (id numeric suffix).
+  // Rewrites sort_order on every non-subtask activity so manual drag-reorders
+  // are wiped and the Gantt goes back to "Takeoffs Needed → Subcontractor Bids
+  // → Create RFP → …" exactly as the spreadsheet had it.
+  const [resettingOrder, setResettingOrder] = useState(false);
+  async function resetToCsvOrder() {
+    const nonSubtask = activities.filter((a) => !a.parent_id);
+    const ordered = [...nonSubtask].sort((a, b) => {
+      const ra = (a.id.match(/-(\d{3,})(?:-|$)/)?.[1] ? parseInt(a.id.match(/-(\d{3,})(?:-|$)/)![1], 10) : Number.POSITIVE_INFINITY);
+      const rb = (b.id.match(/-(\d{3,})(?:-|$)/)?.[1] ? parseInt(b.id.match(/-(\d{3,})(?:-|$)/)![1], 10) : Number.POSITIVE_INFINITY);
+      return ra - rb;
+    });
+    const updates = ordered.map((a, idx) => ({
+      id: a.id,
+      changes: { sort_order: (idx + 1) * 10 },
+    }));
+    if (updates.length === 0) return;
+    setResettingOrder(true);
+    updateActivitiesBulk(updates);
+    // Persist all new sort_order values to DB
+    try {
+      const dbRows = updates.map(({ id, changes }) => {
+        const a = activities.find((x) => x.id === id);
+        return a ? { id, sort_order: changes.sort_order, project_id: (a as any).project_id ?? null } : null;
+      }).filter(Boolean);
+      await fetch('/api/activities/bulk/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dbRows),
+      });
+      showToast(`Reset ${updates.length} activities to CSV order`);
+    } catch (e) {
+      showToast('Local reset done — DB save failed');
+    } finally {
+      setResettingOrder(false);
+    }
+  }
   const [hideUndated, setHideUndated] = useState(false);
   const [collapsedTrades, setCollapsedTrades] = useState<Set<string>>(new Set());
   const [tradesInitialized, setTradesInitialized] = useState(false);
@@ -204,29 +307,45 @@ export default function GanttView() {
   const dynStatuses = useMemo(() => [...new Set(narrowFor('status').map((a) => a.status).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
   const dynPhases = useMemo(() => [...new Set(narrowFor('phase').map((a) => a.phase).filter(Boolean))].sort(), [activities, st, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Group by phase in CSV order; sort within phase by sort_order then id
-  // Exclude subtasks (parent_id set) — they render indented under their parent
+  // CSV import assigned each row an id like "CSV-TPSJ-0002" where the numeric
+  // suffix is the source-file row number. sort_order in the DB was shuffled
+  // during import so we can't trust it — fall back to parsing the id.
+  const csvRowRank = (id: string): number => {
+    const m = id.match(/-(\d{3,})(?:-|$)/);
+    return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+  };
+
+  // Group by phase. Sort within phase by CSV row order (id numeric suffix) so
+  // activities match the source spreadsheet sequence — same as Master Schedule.
+  // Exclude subtasks (parent_id set) — they render indented under their parent.
   const grouped = useMemo(() => {
     const g: Record<string, Activity[]> = {};
     filtered.filter((a) => !a.parent_id).forEach((a) => {
       const ph = normalizePhase(a.phase || 'Other');
       (g[ph] = g[ph] || []).push(a);
     });
-    // Sort within each phase by sort_order then id
     Object.values(g).forEach((arr) =>
-      arr.sort((a, b) => ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.id.localeCompare(b.id))
+      arr.sort((a, b) => {
+        const ra = csvRowRank(a.id);
+        const rb = csvRowRank(b.id);
+        if (ra !== rb) return ra - rb;
+        return ((a.sort_order ?? 0) - (b.sort_order ?? 0)) || a.id.localeCompare(b.id);
+      })
     );
     return g;
   }, [filtered]);
 
-  // Phases sorted by canonical CSV order
+  // Phases ordered by canonical CSV sequence (PHASE_RANK_GANTT) — so the
+  // Gantt matches Master Schedule: Owner RFP → Bid Prep → Bid Submission →
+  // Notice to Proceed → Pre-Construction → …  Unknown phases sink to the end.
   const trades = useMemo(() =>
     Object.keys(grouped).sort((a, b) =>
       (PHASE_RANK_GANTT.get(a) ?? 9999) - (PHASE_RANK_GANTT.get(b) ?? 9999)
     ),
   [grouped]);
 
-  // Collapse all trades by default on first load
+  // Collapsed by default — users scan phase summary bars first, expand
+  // the ones they care about.
   useEffect(() => {
     if (!tradesInitialized && trades.length > 0) {
       setCollapsedTrades(new Set(trades));
@@ -332,10 +451,10 @@ export default function GanttView() {
     let y = 0;
     rows.forEach((r) => {
       if (r.type === 'activity') m[r.activity!.id] = y;
-      y += r.type === 'trade' ? TRADE_H : ROW_H;
+      y += r.type === 'trade' ? TRADE_H_S : ROW_H_S;
     });
     return { idToRowY: m, totalRowsHeight: y };
-  }, [rows]);
+  }, [rows, ROW_H_S, TRADE_H_S]);
 
   // ─── DATE GUIDE HELPERS ───
   function showDateGuideAtPx(xPos: number) {
@@ -718,7 +837,11 @@ export default function GanttView() {
   };
 
   // ─── HEADERS ───
-  // Memoized so pan/selection don't rebuild every render.
+  // Two-row header; the top & bottom rows swap labels based on timelineScale.
+  // - day   : top=Month   / bottom=M/D per day (or per Monday if pxDay<12)
+  // - week  : top=Month   / bottom=W## (ISO week number every Monday)
+  // - month : top=Year    / bottom=Month (MMM)
+  // Bars still render by day-offset, so the timeline geometry never changes.
   const { monthHeaders, weekHeaders, weekendStripes, todayX } = useMemo(() => {
     const mh: { label: string; x: number; w: number }[] = [];
     const wh: { label: string; x: number; w: number }[] = [];
@@ -728,34 +851,94 @@ export default function GanttView() {
       const dayOffset = diffDays(projStart, d);
       const x = dayOffset * pxDay;
 
-      // Month header: starts at day 1 of a month OR at the project start.
-      // Width = days remaining in this month, but clamped so we never overrun
-      // the timeline (bug #9).
-      if (d.getDate() === 1 || dayOffset === 0) {
-        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-        const daysRemainingInMonth = diffDays(d, monthEnd) + 1;
-        const daysRemainingInProject = totalDays - dayOffset;
-        const w = Math.max(0, Math.min(daysRemainingInMonth, daysRemainingInProject)) * pxDay;
-        if (w > 0) {
-          mh.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }), x, w });
+      // ── TOP ROW ─────────────────────────────────────────
+      //   year    → Year (compact, one per year)
+      //   quarter → Year  (top row, so bottom can show quarters)
+      //   month   → Year
+      //   day/wk  → Month + year
+      if (timelineScale === 'year' || timelineScale === 'quarter' || timelineScale === 'month') {
+        if ((d.getMonth() === 0 && d.getDate() === 1) || dayOffset === 0) {
+          const yearEnd = new Date(d.getFullYear(), 11, 31);
+          const daysRemainingInYear = diffDays(d, yearEnd) + 1;
+          const daysRemainingInProject = totalDays - dayOffset;
+          const w = Math.max(0, Math.min(daysRemainingInYear, daysRemainingInProject)) * pxDay;
+          if (w > 0) mh.push({ label: String(d.getFullYear()), x, w });
+        }
+      } else {
+        // day / week scales — Month + year pill on top row
+        if (d.getDate() === 1 || dayOffset === 0) {
+          const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+          const daysRemainingInMonth = diffDays(d, monthEnd) + 1;
+          const daysRemainingInProject = totalDays - dayOffset;
+          const w = Math.max(0, Math.min(daysRemainingInMonth, daysRemainingInProject)) * pxDay;
+          if (w > 0) {
+            mh.push({ label: d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }), x, w });
+          }
         }
       }
 
-      // Week header: every Monday, OR day 0 (so leading partial week is labeled — bug #8).
-      // Width is clamped to the end of timeline so trailing partial week fits.
-      if (d.getDay() === 1 || dayOffset === 0) {
-        const daysToNextMonday = d.getDay() === 1 ? 7 : (8 - d.getDay()) % 7 || 7;
-        const daysRemainingInProject = totalDays - dayOffset;
-        const w = Math.min(daysToNextMonday, daysRemainingInProject) * pxDay;
-        if (w > 0) {
-          wh.push({ label: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }), x, w });
+      // ── BOTTOM ROW ──────────────────────────────────────
+      //   year    → empty (compact — header is just the year strip)
+      //   quarter → Q1 / Q2 / Q3 / Q4
+      //   month   → month short name
+      //   week    → W## (ISO week number)
+      //   day     → M/D per Monday
+      if (timelineScale === 'year') {
+        // No bottom row labels — year scale is truly compact
+      } else if (timelineScale === 'quarter') {
+        // Label each quarter start (Jan/Apr/Jul/Oct) OR project start
+        const month = d.getMonth();
+        const isQuarterStart = (month === 0 || month === 3 || month === 6 || month === 9) && d.getDate() === 1;
+        if (isQuarterStart || dayOffset === 0) {
+          const q = Math.floor(month / 3) + 1;
+          const qEndMonth = q * 3;
+          const quarterEnd = new Date(d.getFullYear(), qEndMonth, 0);
+          const daysRemainingInQuarter = diffDays(d, quarterEnd) + 1;
+          const daysRemainingInProject = totalDays - dayOffset;
+          const w = Math.max(0, Math.min(daysRemainingInQuarter, daysRemainingInProject)) * pxDay;
+          if (w > 0) wh.push({ label: `Q${q}`, x, w });
+        }
+      } else if (timelineScale === 'month') {
+        if (d.getDate() === 1 || dayOffset === 0) {
+          const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+          const daysRemainingInMonth = diffDays(d, monthEnd) + 1;
+          const daysRemainingInProject = totalDays - dayOffset;
+          const w = Math.min(daysRemainingInMonth, daysRemainingInProject) * pxDay;
+          if (w > 0) {
+            wh.push({ label: d.toLocaleDateString('en-US', { month: 'short' }), x, w });
+          }
+        }
+      } else if (timelineScale === 'week') {
+        if (d.getDay() === 1 || dayOffset === 0) {
+          const daysToNextMonday = d.getDay() === 1 ? 7 : (8 - d.getDay()) % 7 || 7;
+          const daysRemainingInProject = totalDays - dayOffset;
+          const w = Math.min(daysToNextMonday, daysRemainingInProject) * pxDay;
+          if (w > 0) {
+            const tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+            const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+            const weekNum = Math.ceil((((tmp.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+            wh.push({ label: `W${weekNum}`, x, w });
+          }
+        }
+      } else {
+        // day scale — Monday marks
+        if (d.getDay() === 1 || dayOffset === 0) {
+          const daysToNextMonday = d.getDay() === 1 ? 7 : (8 - d.getDay()) % 7 || 7;
+          const daysRemainingInProject = totalDays - dayOffset;
+          const w = Math.min(daysToNextMonday, daysRemainingInProject) * pxDay;
+          if (w > 0) {
+            wh.push({ label: d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }), x, w });
+          }
         }
       }
 
-      // Weekend stripes (bug #10): collect once instead of an O(days) map per render.
-      const dow = d.getDay();
-      if (dow === 0 || dow === 6) {
-        ws.push({ x, w: pxDay });
+      // Weekend stripes (only visible on day scale — at week/month the stripes would merge into noise)
+      if (timelineScale === 'day') {
+        const dow = d.getDay();
+        if (dow === 0 || dow === 6) {
+          ws.push({ x, w: pxDay });
+        }
       }
 
       d.setDate(d.getDate() + 1);
@@ -766,7 +949,7 @@ export default function GanttView() {
       weekendStripes: ws,
       todayX: diffDays(projStart, TODAY) * pxDay,
     };
-  }, [projStart, projEnd, totalDays, pxDay]);
+  }, [projStart, projEnd, totalDays, pxDay, timelineScale]);
 
   const hasActiveFilters = st.trade || st.area || st.status || st.phase || datePreset !== 'all';
 
@@ -778,10 +961,53 @@ export default function GanttView() {
           <BarChart3 className="h-4 w-4 text-primary" />
           <h2 className="text-[15px] font-bold tracking-tight">Timeline / Gantt</h2>
           <span className="text-[10.5px] text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full font-semibold">{filtered.length}</span>
+          <StatusLegend
+            className="ml-2 hidden lg:flex"
+            active={st.status}
+            onChange={(v) => setSectionFilter('gantt', 'status', v)}
+          />
         </div>
         <div className="flex items-center gap-1.5">
+          {/* Timeline scale toggle — day / week / month / quarter / year.
+              Quarter is a combo: sets date preset to this-quarter AND switches
+              to week scale so the 3 months read cleanly. */}
+          <div className="flex items-center bg-muted rounded-lg p-0.5 gap-0.5 h-8">
+            {([
+              { key: 'day',     label: 'Day',     icon: Calendar },
+              { key: 'week',    label: 'Week',    icon: CalendarDays },
+              { key: 'month',   label: 'Month',   icon: CalendarClock },
+              { key: 'quarter', label: 'Quarter', icon: CalendarRange },
+              { key: 'year',    label: 'Year',    icon: CalendarRange },
+            ] as const).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => changeScale(key)}
+                className={cn(
+                  'flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all',
+                  timelineScale === key
+                    ? 'bg-card shadow-sm text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                title={`${label} scale`}
+              >
+                <Icon className="h-3 w-3" />
+                {label}
+              </button>
+            ))}
+          </div>
           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setGanttPxPerDay(pxDay - 3)}><Minus className="h-3.5 w-3.5" /></Button>
           <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setGanttPxPerDay(pxDay + 3)}><Plus className="h-3.5 w-3.5" /></Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 text-xs"
+            onClick={resetToCsvOrder}
+            disabled={resettingOrder}
+            title="Reset activity order to the source CSV sequence"
+          >
+            <RotateCcw className={cn('h-3.5 w-3.5', resettingOrder && 'animate-spin')} />
+            {resettingOrder ? 'Resetting…' : 'Reset Order'}
+          </Button>
           <Button variant={ganttSidebarOn ? 'default' : 'outline'} size="sm" className="h-8 gap-1 text-xs" onClick={() => setGanttSidebarOn(!ganttSidebarOn)} title="Toggle: open detail on bar click">
             {ganttSidebarOn ? <PanelRightOpen className="h-3.5 w-3.5" /> : <PanelRightClose className="h-3.5 w-3.5" />}
             Detail
@@ -886,7 +1112,7 @@ export default function GanttView() {
           </div>
           {rows.map((row, i) =>
             row.type === 'trade' ? (
-              <div key={`t-${i}`} className="flex items-center px-2 font-bold text-[11px] bg-muted/50 border-b border-border/50 gap-1.5 cursor-pointer hover:bg-muted/80 transition-colors select-none" style={{ height: TRADE_H }}
+              <div key={`t-${i}`} className="flex items-center px-2 font-bold text-[11px] bg-muted/50 border-b border-border/50 gap-1.5 cursor-pointer hover:bg-muted/80 transition-colors select-none" style={{ height: TRADE_H_S }}
                 onClick={() => setCollapsedTrades((prev) => { const next = new Set(prev); next.has(row.trade) ? next.delete(row.trade) : next.add(row.trade); return next; })}>
                 {collapsedTrades.has(row.trade)
                   ? <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
@@ -907,7 +1133,7 @@ export default function GanttView() {
                   setCollapsedActivities((prev) => { const next = new Set(prev); next.has(act.id) ? next.delete(act.id) : next.add(act.id); return next; });
                 };
                 return (
-                  <div key={`a-${i}`} data-left-row={act.id} className="flex items-center text-[11px] cursor-pointer border-b border-border/30 hover:bg-primary/5" style={{ height: ROW_H, paddingLeft: row.isSubtask ? 20 : 8, paddingRight: 8 }} onClick={() => { if (ganttSidebarOn) setSelectedActivity(act.id); }}>
+                  <div key={`a-${i}`} data-left-row={act.id} className="flex items-center text-[11px] cursor-pointer border-b border-border/30 hover:bg-primary/5" style={{ height: ROW_H_S, paddingLeft: row.isSubtask ? 20 : 8, paddingRight: 8 }} onClick={() => { if (ganttSidebarOn) setSelectedActivity(act.id); }}>
                     {hasSubs ? (
                       <button className="shrink-0 p-0.5 mr-0.5 rounded hover:bg-primary/10 text-muted-foreground" onClick={toggleCollapse}>
                         {isCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
@@ -975,7 +1201,7 @@ export default function GanttView() {
                 const succStart = parseDate(succ.start || succ.finish);
                 if (!succStart) return null;
                 const succX = diffDays(projStart, succStart) * pxDay;
-                const succY = succRowY + BAR_Y + BAR_H / 2;
+                const succY = succRowY + BAR_Y_S + BAR_H_S / 2;
 
                 return succ.predecessors.map((pid) => {
                   const predRowY = idToRowY[pid];
@@ -986,7 +1212,7 @@ export default function GanttView() {
                   if (!predFinish) return null;
                   // Finish-to-Start: right edge of predecessor's last day → left edge of successor.
                   const predX = (diffDays(projStart, predFinish) + 1) * pxDay;
-                  const predY = predRowY + BAR_Y + BAR_H / 2;
+                  const predY = predRowY + BAR_Y_S + BAR_H_S / 2;
                   // L-shape routing with a small elbow
                   const elbowX = Math.max(predX + 6, succX - 6);
                   const d = `M ${predX} ${predY} L ${elbowX} ${predY} L ${elbowX} ${succY} L ${succX} ${succY}`;
@@ -1009,29 +1235,28 @@ export default function GanttView() {
             {rows.map((row, ri) => {
               if (row.type === 'trade') {
                 const isCollapsed = collapsedTrades.has(row.trade);
-                if (!isCollapsed) return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }} />;
-                // Collapsed: show summary bar spanning all activities in this trade
+                if (!isCollapsed) return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H_S, width: timelineW }} />;
+                // Collapsed: summary bar spans only the parent activities — not
+                // their subtasks. Subtask dates are often noisy (fake sequential
+                // stubs from CSV import) and would stretch the bar far beyond
+                // the real work window. Parents already carry the true range.
                 const tradeActs = grouped[row.trade] || [];
                 const tradeDates = tradeActs.flatMap((act) => {
-                  // Include subtask dates too
-                  const allActs = [act, ...activities.filter((s) => s.parent_id === act.id)];
-                  return allActs.flatMap((x) => {
-                    const dur = Math.max(1, x.duration || 1);
-                    let ss = parseDate(x.start); let sf = parseDate(x.finish);
-                    if (ss && !sf) sf = addDays(ss, dur - 1);
-                    else if (sf && !ss) ss = addDays(sf, -(dur - 1));
-                    return ss && sf ? [{ s: ss, f: sf }] : [];
-                  });
+                  const dur = Math.max(1, act.duration || 1);
+                  let ss = parseDate(act.start); let sf = parseDate(act.finish);
+                  if (ss && !sf) sf = addDays(ss, dur - 1);
+                  else if (sf && !ss) ss = addDays(sf, -(dur - 1));
+                  return ss && sf ? [{ s: ss, f: sf }] : [];
                 });
-                if (!tradeDates.length) return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }} />;
+                if (!tradeDates.length) return <div key={`tr-${ri}`} className="flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H_S, width: timelineW }} />;
                 const ts = new Date(Math.min(...tradeDates.map((d) => d.s.getTime())));
                 const tf = new Date(Math.max(...tradeDates.map((d) => d.f.getTime())));
                 const tbX = diffDays(projStart, ts) * pxDay;
-                const tbW = Math.max(pxDay, (diffDays(ts, tf) + 1) * pxDay);
+                const tbW = Math.max(BAR_MIN_PX, pxDay, (diffDays(ts, tf) + 1) * pxDay);
                 const color = getTradeColor(tradeActs[0]?.trade ?? '');
                 return (
-                  <div key={`tr-${ri}`} className="relative flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H, width: timelineW }}>
-                    <div className="absolute" style={{ left: tbX, top: 5, width: tbW, height: TRADE_H - 10, borderRadius: 4 }}>
+                  <div key={`tr-${ri}`} className="relative flex items-center bg-muted/30 border-b border-border/40" style={{ height: TRADE_H_S, width: timelineW }}>
+                    <div className="absolute" style={{ left: tbX, top: 3, width: tbW, height: TRADE_H_S - 6, borderRadius: 4 }}>
                       <div className="absolute inset-0 rounded" style={{ background: color, opacity: 0.2 }} />
                       <div className="absolute inset-0 rounded border-2" style={{ borderColor: color, opacity: 0.7 }} />
                       {tbW > 60 && <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-bold pointer-events-none truncate" style={{ color, maxWidth: tbW - 16 }}>{fmt(ts)} – {fmt(tf)}</span>}
@@ -1043,25 +1268,21 @@ export default function GanttView() {
               const a = row.activity!;
               const color = getTradeColor(a.trade);
 
-              // For parent activities: span bar across all subtask dates (only when expanded)
+              // For parent activities: the summary bar uses the PARENT's own
+              // start/finish as the source of truth. We used to union in subtask
+              // dates too, but subtasks often carry fake stub dates from CSV
+              // import that stretch the bar into 2027+. Trust the parent.
               const subs = !row.isSubtask && !collapsedActivities.has(a.id) ? activities.filter((s) => s.parent_id === a.id) : [];
               const isSummary = subs.length > 0;
 
               let s: Date | null, f: Date | null;
               if (isSummary) {
-                // Summary bar: min subtask start → max subtask finish
-                const subDates = subs.flatMap((sub) => {
-                  const dur = Math.max(1, sub.duration || 1);
-                  let ss = parseDate(sub.start);
-                  let sf = parseDate(sub.finish);
-                  if (ss && !sf) sf = addDays(ss, dur - 1);
-                  else if (sf && !ss) ss = addDays(sf, -(dur - 1));
-                  return ss && sf ? [{ s: ss, f: sf }] : [];
-                });
-                s = subDates.length ? new Date(Math.min(...subDates.map((d) => d.s.getTime()))) : parseDate(a.start);
-                f = subDates.length ? new Date(Math.max(...subDates.map((d) => d.f.getTime()))) : parseDate(a.finish);
-                if (!s) s = TODAY;
-                if (!f) f = TODAY;
+                const dur = Math.max(1, a.duration || 1);
+                s = parseDate(a.start);
+                f = parseDate(a.finish);
+                if (s && !f) f = addDays(s, dur - 1);
+                else if (f && !s) s = addDays(f, -(dur - 1));
+                if (!s || !f) { s = TODAY; f = TODAY; }
               } else {
                 const dur = Math.max(1, a.duration || 1);
                 s = parseDate(a.start);
@@ -1072,14 +1293,18 @@ export default function GanttView() {
               }
 
               const barX = diffDays(projStart, s) * pxDay;
-              const barW = Math.max(pxDay, (diffDays(s, f) + 1) * pxDay);
+              // At coarse scales (month/quarter/year) a 1-day activity at 0.8 px/day
+              // would be invisible. Enforce a per-scale minimum so bars stay
+              // clickable and visible without changing the timeline geometry.
+              const rawBarW = (diffDays(s, f) + 1) * pxDay;
+              const barW = Math.max(BAR_MIN_PX, pxDay, rawBarW);
               const pctW = (a.pct / 100) * barW;
 
               if (isSummary) {
                 // Summary bar: draggable + resizable, slightly bolder style
                 return (
-                  <div key={`bar-${ri}`} data-gantt-row={a.id} className="relative border-b border-border/20" style={{ height: ROW_H, width: timelineW }}>
-                    <div data-bar="true" data-start={a.start} data-finish={a.finish} className="absolute cursor-grab active:cursor-grabbing group" style={{ left: barX, top: BAR_Y, width: barW, height: BAR_H, borderRadius: 4 }} onMouseDown={(e) => handleBarMouseDown(e, a.id)}>
+                  <div key={`bar-${ri}`} data-gantt-row={a.id} className="relative border-b border-border/20" style={{ height: ROW_H_S, width: timelineW }}>
+                    <div data-bar="true" data-start={a.start} data-finish={a.finish} className="absolute cursor-grab active:cursor-grabbing group" style={{ left: barX, top: BAR_Y_S, width: barW, height: BAR_H_S, borderRadius: 4 }} onMouseDown={(e) => handleBarMouseDown(e, a.id)}>
                       <div className="absolute inset-0 rounded" style={{ background: color, opacity: 0.25 }} />
                       <div className="absolute top-0 bottom-0 left-0 rounded-l" style={{ width: pctW, background: color, opacity: 0.7 }} />
                       <div className="absolute inset-0 rounded border-2" style={{ borderColor: color, opacity: 0.8 }} />
@@ -1095,8 +1320,8 @@ export default function GanttView() {
               }
 
               return (
-                <div key={a.id} data-gantt-row={a.id} className="relative border-b border-border/20" style={{ height: ROW_H, width: timelineW }}>
-                  <div data-bar="true" data-start={a.start} data-finish={a.finish} className="absolute cursor-grab active:cursor-grabbing group" style={{ left: barX, top: BAR_Y, width: barW, height: BAR_H, borderRadius: 4 }} onMouseDown={(e) => handleBarMouseDown(e, a.id)}>
+                <div key={a.id} data-gantt-row={a.id} className="relative border-b border-border/20" style={{ height: ROW_H_S, width: timelineW }}>
+                  <div data-bar="true" data-start={a.start} data-finish={a.finish} className="absolute cursor-grab active:cursor-grabbing group" style={{ left: barX, top: BAR_Y_S, width: barW, height: BAR_H_S, borderRadius: 4 }} onMouseDown={(e) => handleBarMouseDown(e, a.id)}>
                     <div className="absolute inset-0 rounded" style={{ background: color, opacity: 0.15 }} />
                     <div className="absolute top-0 bottom-0 left-0 rounded-l" style={{ width: pctW, background: color, opacity: 0.65 }} />
                     <div className="absolute inset-0 rounded border" style={{ borderColor: color, opacity: 0.5 }} />

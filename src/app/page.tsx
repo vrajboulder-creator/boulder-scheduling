@@ -61,10 +61,8 @@ export default function HomePage() {
         const firstCode = rows.find((p) => p.code === 'tpsj')?.code || rows[0]?.code;
         if (firstCode) {
           setCurrentProject(firstCode);
-          // projects state is now set — fetch weather immediately (the currentProject
-          // useEffect fires before setProjects resolves, so proj is undefined there)
-          const projForWeather = byCode[firstCode];
-          if (projForWeather) fetchWeather(firstCode, projForWeather);
+          // Fetch weather for ALL projects so cards show forecast on Overview
+          Object.entries(byCode).forEach(([code, proj]) => fetchWeather(code, proj));
         }
       } catch (e) {
         console.warn('Project load failed:', (e as Error).message);
@@ -107,7 +105,7 @@ export default function HomePage() {
     if (!proj || proj.weatherLoaded) return;
     try {
       const resp = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${proj.lat}&longitude=${proj.lon}&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Chicago&forecast_days=3`
+        `https://api.open-meteo.com/v1/forecast?latitude=${proj.lat}&longitude=${proj.lon}&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Chicago&forecast_days=6`
       );
       if (!resp.ok) throw new Error(resp.statusText);
       const data = await resp.json();
@@ -128,7 +126,7 @@ export default function HomePage() {
 
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const forecast: ForecastDay[] = [];
-      for (let i = 0; i < Math.min(3, daily.time.length); i++) {
+      for (let i = 0; i < Math.min(6, daily.time.length); i++) {
         const d = new Date(daily.time[i] + 'T12:00');
         forecast.push({
           day: dayNames[d.getDay()],

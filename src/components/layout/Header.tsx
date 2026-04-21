@@ -1,15 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import { useAppStore } from '@/hooks/useAppStore';
 import { fmtFull, TODAY } from '@/lib/helpers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SelectNative } from '@/components/ui/select-native';
 import { WeatherIcon } from '@/components/ui/WeatherCard';
-import { Plus, Menu, Mic, CloudOff } from 'lucide-react';
+import AIPanel from '@/components/ui/AIPanel';
+import { Plus, Menu, Mic, CloudOff, Sparkles } from 'lucide-react';
 
 export default function Header() {
   const { projects, currentProject, setCurrentProject, searchQuery, setSearchQuery, setModalOpen } = useAppStore();
+  const [showAI, setShowAI] = useState(false);
   const projectKeys = Object.keys(projects);
   const proj = projects[currentProject];
 
@@ -79,12 +82,25 @@ export default function Header() {
           {fmtFull(TODAY)}
         </span>
 
+        {/* AI Assistant */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setShowAI(true)}
+          className="gap-1.5 border-[#e8793b]/50 text-[#e8793b] hover:bg-[#e8793b]/10 hover:border-[#e8793b]"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          AI
+        </Button>
+
         {/* Add Activity */}
         <Button size="sm" onClick={() => setModalOpen(true)} className="gap-1">
           <Plus className="h-3.5 w-3.5" />
           Activity
         </Button>
       </div>
+
+      {showAI && <AIPanel onClose={() => setShowAI(false)} />}
     </header>
   );
 }
